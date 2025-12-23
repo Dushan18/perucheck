@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     KeyboardAvoidingView,
@@ -6,6 +6,7 @@ import {
     Pressable,
     ScrollView,
     StyleSheet,
+    TextInput,
     View,
 } from 'react-native';
 
@@ -28,6 +29,85 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [stage, setStage] = useState<'enter-phone' | 'enter-code'>('enter-phone');
+  const [phone, setPhone] = useState('');
+  const [code, setCode] = useState('');
+  const [cooldown, setCooldown] = useState(0);
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const timer = setTimeout(() => setCooldown((c) => Math.max(0, c - 1)), 1000);
+    return () => clearTimeout(timer);
+  }, [cooldown]);
+
+  const sendOtp = async () => {
+    if (!supabase) {
+      setError('Configura tus variables de Supabase antes de continuar.');
+      return;
+    }
+    const phoneClean = phone.trim();
+    if (!phoneClean) {
+      setError('Ingresa tu número con +51.');
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const { error: otpError } = await supabase.auth.signInWithOtp({ phone: phoneClean });
+      if (otpError) {
+        setError(otpError.message);
+        return;
+      }
+      setStage('enter-code');
+      setMessage('Código enviado. Revisa tu SMS.');
+      setCooldown(30);
+    } catch (err: any) {
+      setError(err?.message ?? 'No se pudo enviar el código.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const verifyOtp = async () => {
+    if (!supabase) {
+      setError('Configura tus variables de Supabase antes de continuar.');
+      return;
+    }
+    const phoneClean = phone.trim();
+    const codeClean = code.trim();
+    if (!phoneClean || codeClean.length < 4) {
+      setError('Ingresa el código completo.');
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const { error: verifyError } = await supabase.auth.verifyOtp({
+        phone: phoneClean,
+        token: codeClean,
+        type: 'sms',
+      });
+      if (verifyError) {
+        setError(verifyError.message);
+        return;
+      }
+      setMessage('Código validado, iniciando sesión…');
+    } catch (err: any) {
+      setError(err?.message ?? 'No se pudo validar el código.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resetFlow = () => {
+    setStage('enter-phone');
+    setCode('');
+    setMessage(null);
+    setError(null);
+    setCooldown(0);
+  };
+
   const signInWithGoogle = async () => {
     if (!supabase) {
       setError('Configura tus variables de Supabase antes de continuar.');
@@ -54,6 +134,10 @@ export default function LoginScreen() {
   };
 
   const showMissingConfig = !hasSupabaseConfig;
+  const maskedPhone =
+    phone.trim().length > 4
+      ? `${phone.trim().slice(0, 4)} **** ${phone.trim().slice(-2)}`
+      : phone.trim();
 
   return (
     <ThemedView style={styles.screen} lightColor="#050915" darkColor="#050915">

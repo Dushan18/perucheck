@@ -19,6 +19,12 @@ const palette = {
   surfaceAlt: '#0F172A',
 };
 
+const formatExpiry = (iso?: string | null) => {
+  if (!iso) return 'Sin vencimiento';
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? 'Sin vencimiento' : d.toLocaleDateString();
+};
+
 type ConsultaRow = {
   id: string;
   tipo: string;
@@ -83,22 +89,22 @@ export default function ProfileScreen() {
 
   const planName = usage?.plan?.name ?? 'Free';
   const creditText =
-    usage?.remainingToday != null
-      ? `${usage.remainingToday} consultas hoy · ${usage.remainingMonth ?? '∞'} en el mes`
+    usage?.creditsRemaining != null
+      ? `${usage.creditsRemaining} restantes${
+          usage.validUntil ? ` · vence ${formatExpiry(usage.validUntil)}` : ''
+        }`
       : 'Créditos ilimitados';
 
   const mappedPlans = useMemo(() => {
     return plans.map((p) => {
-      const features = typeof p.features === 'object' && p.features ? p.features : {};
       return {
         ...p,
         tag: p.id === 'free' ? 'Incluido' : p.id === 'pro' ? 'Recomendado' : 'A medida',
-        subtitle:
-          p.daily_limit || p.monthly_limit
-            ? `${p.daily_limit ?? '∞'}/día · ${p.monthly_limit ?? '∞'}/mes`
-            : 'Uso según contrato',
-        support: features.support ?? 'standard',
-        notes: features.notes ?? '',
+        subtitle: `${p.total_consultas ?? '∞'} consultas · ${
+          p.duration_days ? `${p.duration_days} días` : 'Sin vencimiento'
+        }`,
+        priceLabel:
+          p.price_pen && Number(p.price_pen) > 0 ? `S/ ${Number(p.price_pen).toFixed(2)}` : 'Gratis',
       };
     });
   }, [plans]);
@@ -156,8 +162,11 @@ export default function ProfileScreen() {
               <>
                 <View style={styles.statsRow}>
                   <Stat label="Créditos" value={creditText} />
-                  <Stat label="Hoy" value={usage?.dailyUsed ?? 0} />
-                  <Stat label="Mes" value={usage?.monthlyUsed ?? 0} />
+                  <Stat label="Usadas" value={usage?.creditsUsed ?? 0} />
+                  <Stat
+                    label="Vence"
+                    value={usage?.validUntil ? formatExpiry(usage.validUntil) : '—'}
+                  />
                 </View>
                 <Pressable style={styles.signOut} onPress={signOut}>
                   <MaterialIcons name="logout" size={18} color="#fff" />
@@ -172,7 +181,7 @@ export default function ProfileScreen() {
       <ThemedView style={styles.card}>
         <View style={styles.rowBetween}>
           <ThemedText style={styles.sectionTitle}>Planes</ThemedText>
-          <ThemedText style={styles.muted}>Actualiza tu suscripción</ThemedText>
+          <ThemedText style={styles.muted}>Actualiza tus créditos</ThemedText>
         </View>
         {loading ? (
           <ActivityIndicator color={palette.primary} />
@@ -196,13 +205,7 @@ export default function ProfileScreen() {
                   </View>
                 </View>
                 <ThemedText style={styles.planSubtitle}>{plan.subtitle}</ThemedText>
-                <ThemedText style={styles.planPrice}>
-                  {plan.price_usd && plan.price_usd > 0 ? `$${plan.price_usd} / mes` : 'Gratis'}
-                </ThemedText>
-                <ThemedText style={styles.planSupport}>Soporte: {plan.support}</ThemedText>
-                {plan.notes ? (
-                  <ThemedText style={styles.planSupport}>Incluye: {plan.notes}</ThemedText>
-                ) : null}
+                <ThemedText style={styles.planPrice}>{plan.priceLabel}</ThemedText>
                 <ThemedText style={styles.planAction}>
                   {updatingPlan === plan.id ? 'Aplicando…' : 'Elegir plan'}
                 </ThemedText>

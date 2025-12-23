@@ -8,6 +8,12 @@ import { ThemedView } from '@/components/themed-view';
 import { useAuth } from '@/providers/auth-provider';
 import { supabase } from '@/lib/supabase';
 
+const formatExpiry = (iso?: string | null) => {
+  if (!iso) return 'Sin vencimiento';
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? 'Sin vencimiento' : d.toLocaleDateString();
+};
+
 export default function ModalScreen() {
   const { action } = useLocalSearchParams<{ action?: string }>();
   const router = useRouter();
@@ -30,8 +36,10 @@ export default function ModalScreen() {
       setUsage({
         planName: snapshot.plan?.name ?? 'Free',
         remaining:
-          snapshot.remainingToday != null
-            ? `${snapshot.remainingToday} hoy · ${snapshot.remainingMonth ?? '∞'} mes`
+          snapshot.creditsRemaining != null
+            ? `${snapshot.creditsRemaining} restantes${
+                snapshot.validUntil ? ` · vence ${formatExpiry(snapshot.validUntil)}` : ''
+              }`
             : 'Uso ilimitado',
       });
       setLoading(false);
@@ -41,16 +49,14 @@ export default function ModalScreen() {
 
   const mappedPlans = useMemo(() => {
     return plans.map((p) => {
-      const features = typeof p.features === 'object' && p.features ? p.features : {};
       return {
         ...p,
         tag: p.id === 'free' ? 'Incluido' : p.id === 'pro' ? 'Recomendado' : 'A medida',
-        subtitle:
-          p.daily_limit || p.monthly_limit
-            ? `${p.daily_limit ?? '∞'}/día · ${p.monthly_limit ?? '∞'}/mes`
-            : 'Uso según contrato',
-        support: features.support ?? 'standard',
-        notes: features.notes ?? '',
+        subtitle: `${p.total_consultas ?? '∞'} consultas · ${
+          p.duration_days ? `${p.duration_days} días` : 'Sin vencimiento'
+        }`,
+        priceLabel:
+          p.price_pen && Number(p.price_pen) > 0 ? `S/ ${Number(p.price_pen).toFixed(2)}` : 'Gratis',
       };
     });
   }, [plans]);
@@ -64,8 +70,10 @@ export default function ModalScreen() {
       setUsage({
         planName: snapshot.plan?.name ?? 'Free',
         remaining:
-          snapshot.remainingToday != null
-            ? `${snapshot.remainingToday} hoy · ${snapshot.remainingMonth ?? '∞'} mes`
+          snapshot.creditsRemaining != null
+            ? `${snapshot.creditsRemaining} restantes${
+                snapshot.validUntil ? ` · vence ${formatExpiry(snapshot.validUntil)}` : ''
+              }`
             : 'Uso ilimitado',
       });
     } finally {
@@ -114,15 +122,8 @@ export default function ModalScreen() {
                   </View>
                 </View>
                 <ThemedText style={styles.planSubtitle}>{plan.subtitle}</ThemedText>
-                <ThemedText style={styles.planPrice}>
-                  {plan.price_usd && plan.price_usd > 0 ? `$${plan.price_usd} / mes` : 'Gratis'}
-                </ThemedText>
-                <View style={styles.planFeatures}>
-                  <ThemedText style={styles.feature}>Soporte: {plan.support}</ThemedText>
-                  {plan.notes ? (
-                    <ThemedText style={styles.feature}>Incluye: {plan.notes}</ThemedText>
-                  ) : null}
-                </View>
+                <ThemedText style={styles.planPrice}>{plan.priceLabel}</ThemedText>
+                <View style={styles.planFeatures} />
                 <View style={styles.planFooter}>
                   <ThemedText style={styles.planAction}>
                     {updating === plan.id ? 'Aplicando…' : 'Usar este plan'}
@@ -137,7 +138,7 @@ export default function ModalScreen() {
           <ThemedText style={styles.helperTitle}>¿Cómo funciona?</ThemedText>
           <ThemedText style={styles.helperText}>
             Cambia de plan sin salir de la app. Las consultas que hagas se guardan en tu historial y
-            se descuentan de tus límites diarios y mensuales automáticamente.
+            se descuentan de tus créditos activos automáticamente.
           </ThemedText>
         </View>
 

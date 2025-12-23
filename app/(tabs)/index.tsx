@@ -31,6 +31,12 @@ const palette = {
   surfaceAlt: '#0F1C34',
 };
 
+const formatExpiry = (iso?: string | null) => {
+  if (!iso) return 'Sin vencimiento';
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? 'Sin vencimiento' : d.toLocaleDateString();
+};
+
 const formatPlate = (value: string) => {
   const clean = value.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 6);
   const part1 = clean.slice(0, 3);
@@ -79,6 +85,9 @@ type SunarpOwner = {
 
 type SunarpData = {
   propietarios: SunarpOwner[];
+  coincidencias?: SunarpOwner[];
+  dniPropietario?: string;
+  propietarioUsado?: string;
   placa?: string;
   vin?: string;
   partida?: string;
@@ -174,7 +183,10 @@ const parseSunarp = (raw: string, full?: any): SunarpData | null => {
   const propietariosRaw =
     datos?.propietarios || datos?.titulares || datos?.propietario || datos?.titular || [];
   const propietariosDetalle = datos?.propietarios_detalle || datos?.propietariosDetalles || [];
+  const coincidenciasRaw = datos?.dni_propietario_coincidentes || datos?.propietarios_coincidentes || [];
+  const busquedaResultados = datos?.dni_propietario_buscar?.resultados || [];
   const propietarios: SunarpOwner[] = [];
+  const coincidencias: SunarpOwner[] = [];
 
   if (Array.isArray(propietariosRaw)) {
     propietariosRaw.forEach((p) => {
@@ -205,6 +217,29 @@ const parseSunarp = (raw: string, full?: any): SunarpData | null => {
     });
   }
 
+  if (Array.isArray(coincidenciasRaw)) {
+    coincidenciasRaw.forEach((c: any) => {
+      const nombre = [c?.nombres, c?.ap_paterno, c?.ap_materno, c?.texto]
+        .filter(Boolean)
+        .join(' ')
+        .trim();
+      const documento = `${c?.dni || c?.documento || ''}`.trim();
+      if (nombre || documento) {
+        coincidencias.push({ nombre: nombre || 'Coincidencia', documento });
+      }
+    });
+  }
+
+  if (Array.isArray(busquedaResultados) && busquedaResultados.length) {
+    busquedaResultados.forEach((c: any) => {
+      const nombre = [c?.nombres, c?.ap_paterno, c?.ap_materno].filter(Boolean).join(' ').trim();
+      const documento = `${c?.dni || ''}`.trim();
+      if (nombre || documento) {
+        coincidencias.push({ nombre: nombre || 'Coincidencia', documento });
+      }
+    });
+  }
+
   if (!propietarios.length) {
     const posiblesLineas = raw
       .split(/\r?\n/)
@@ -220,16 +255,26 @@ const parseSunarp = (raw: string, full?: any): SunarpData | null => {
   const vin = datos?.vin || datos?.vin_vehicular || datos?.numero_vin || '';
   const partida = datos?.partida || datos?.nro_partida || '';
   const oficina = datos?.oficina || datos?.zona || datos?.zona_registral || '';
+  const dniPropietario = `${datos?.dni_propietario || ''}`.trim() || undefined;
+  const propietarioUsado = datos?.propietario_usado_para_dni
+    ? [datos.propietario_usado_para_dni?.nombres, datos.propietario_usado_para_dni?.ap_paterno, datos.propietario_usado_para_dni?.ap_materno]
+        .filter(Boolean)
+        .join(' ')
+        .trim()
+    : undefined;
   const captchaDetectado = datos?.captcha_detectado || full?.captcha_detectado;
   const captchaValido = datos?.captcha_valido ?? full?.captcha_valido;
   const imagenResultado = datos?.imagen_resultado_src || full?.imagen_resultado_src || '';
 
-  if (!propietarios.length && !(placa || vin || partida || oficina)) {
+  if (!propietarios.length && !coincidencias.length && !(placa || vin || partida || oficina)) {
     return null;
   }
 
   return {
     propietarios,
+    coincidencias,
+    dniPropietario,
+    propietarioUsado,
     placa,
     vin,
     partida,
@@ -630,6 +675,8 @@ function renderSunarpState(state?: ServiceState, onRefresh?: () => void) {
   const parsed: SunarpData | null | undefined = state.parsed;
   if (!parsed) return renderGenericServiceState(state, onRefresh);
   const propietarios = parsed.propietarios || [];
+  const coincidencias = parsed.coincidencias || [];
+  const ownersToShow = coincidencias.length ? coincidencias : propietarios;
 
   return (
     <View style={styles.soatContent}>
@@ -641,12 +688,26 @@ function renderSunarpState(state?: ServiceState, onRefresh?: () => void) {
       </View>
       <View style={styles.metaRow}>
         <View style={styles.metaPill}>
-          <ThemedText style={styles.metaText}>Propietarios: {propietarios.length}</ThemedText>
+          <ThemedText style={styles.metaText}>
+            {coincidencias.length
+              ? `Coincidencias DNI: ${coincidencias.length}`
+              : `Propietarios: ${propietarios.length}`}
+          </ThemedText>
         </View>
+        {parsed.dniPropietario ? (
+          <View style={styles.metaPill}>
+            <ThemedText style={styles.metaText}>DNI base: {parsed.dniPropietario}</ThemedText>
+          </View>
+        ) : null}
+        {parsed.propietarioUsado ? (
+          <View style={styles.metaPill}>
+            <ThemedText style={styles.metaText}>{parsed.propietarioUsado}</ThemedText>
+          </View>
+        ) : null}
       </View>
 
-      {propietarios.length ? (
-        propietarios.map((prop, idx) => (
+      {ownersToShow.length ? (
+        ownersToShow.map((prop, idx) => (
           <View key={`${prop.documento || prop.nombre}-${idx}`} style={styles.ownerRow}>
             <ThemedText style={styles.ownerName}>{prop.nombre || 'Propietario'}</ThemedText>
             <View style={styles.ownerBadges}>
@@ -874,11 +935,31 @@ export default function HomeScreen() {
       {} as Record<string, ServiceState>
     );
   });
+  const [showOwnerDetails, setShowOwnerDetails] = useState(false);
   const sunarpData = serviceState['sunarp']?.parsed as SunarpData | null | undefined;
-  const sunarpOwner = sunarpData?.propietarios?.[0]?.nombre?.trim();
-  const sunarpVin = sunarpData?.vin?.trim();
-  const sunarpPlaca = sunarpData?.placa?.trim();
-  const sunarpPartida = sunarpData?.partida?.trim();
+  const sunarpOwnersBase =
+    (sunarpData?.coincidencias && sunarpData.coincidencias.length > 0
+      ? sunarpData.coincidencias
+      : sunarpData?.propietarios) || [];
+  const sunarpOwnersCount = sunarpOwnersBase.length;
+  const sunarpOwnerSummary = sunarpOwnersBase
+    .map((owner) => {
+      const name = owner.nombre?.trim();
+      const doc = owner.documento?.trim();
+      if (name && doc) return `${name} (${doc})`;
+      return name || doc || null;
+    })
+    .filter(Boolean)
+    .slice(0, 2)
+    .join(' · ');
+  const sunarpOwnerLines = sunarpOwnersBase
+    .map((owner) => {
+      const name = owner.nombre?.trim();
+      const doc = owner.documento?.trim();
+      if (name && doc) return `${name} (${doc})`;
+      return name || doc || null;
+    })
+    .filter(Boolean);
   const [usage, setUsage] = useState<UsageSnapshot | null>(null);
   const [usageLoading, setUsageLoading] = useState(false);
 
@@ -899,9 +980,8 @@ export default function HomeScreen() {
 
   const hasCredits = useCallback(() => {
     if (!usage) return true;
-    const noDaily = usage.remainingToday != null && usage.remainingToday <= 0;
-    const noMonthly = usage.remainingMonth != null && usage.remainingMonth <= 0;
-    return !(noDaily || noMonthly);
+    if (usage.creditsRemaining == null) return true;
+    return usage.creditsRemaining > 0;
   }, [usage]);
 
   const guardCredits = useCallback(() => {
@@ -1099,11 +1179,15 @@ export default function HomeScreen() {
         <ThemedText style={styles.sectionHint}>
           {usageLoading
             ? 'Actualizando créditos…'
-            : `Hoy: ${usage?.remainingToday ?? '∞'} · Mes: ${usage?.remainingMonth ?? '∞'}`}
+            : usage
+              ? `${usage.creditsRemaining != null ? `${usage.creditsRemaining} restantes` : 'Créditos ilimitados'}${
+                  usage.validUntil ? ` · vence ${formatExpiry(usage.validUntil)}` : ''
+                }`
+              : 'Sin información de créditos'}
         </ThemedText>
         <View style={styles.usageRow}>
           <ThemedText style={styles.usageMeta}>
-            {usage?.subscription?.status === 'active' ? 'Suscripción activa' : 'Sin suscripción activa'}
+            {usage?.plan ? 'Créditos activos' : 'Sin créditos asignados'}
           </ThemedText>
           <Pressable style={styles.secondaryButton} onPress={() => handleAction('paquetes')}>
             <ThemedText style={styles.secondaryText}>Comprar paquetes</ThemedText>
@@ -1171,17 +1255,33 @@ export default function HomeScreen() {
                   </ThemedText>
                 </View>
               </View>
-              <View style={[styles.summaryBlock, { backgroundColor: palette.surfaceAlt }]}>
+              <Pressable
+                style={[styles.summaryBlock, { backgroundColor: palette.surfaceAlt }]}
+                disabled={!sunarpOwnersCount}
+                onPress={() => setShowOwnerDetails((prev) => !prev)}>
                 <View style={styles.summaryIconBoxSecondary}>
                   <MaterialIcons name="verified" size={20} color={palette.accent} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <ThemedText style={styles.summaryLabel}>Estado general</ThemedText>
-                  <ThemedText style={[styles.summaryValue, { color: palette.accent }]}>
-                    Habilitado
+                  <ThemedText style={styles.summaryLabel}>Propietario(s)</ThemedText>
+                  <ThemedText
+                    style={[
+                      styles.summaryValue,
+                      { color: sunarpOwnerSummary ? '#F8FAFC' : palette.muted },
+                    ]}>
+                    {sunarpOwnerSummary || 'Consulta pendiente'}
                   </ThemedText>
+                  {showOwnerDetails && sunarpOwnerLines.length ? (
+                    <View style={styles.ownerList}>
+                      {sunarpOwnerLines.map((line, idx) => (
+                        <ThemedText key={idx} style={styles.ownerLine}>
+                          • {line}
+                        </ThemedText>
+                      ))}
+                    </View>
+                  ) : null}
                 </View>
-              </View>
+              </Pressable>
             </View>
           </ThemedView>
 
@@ -1209,7 +1309,7 @@ export default function HomeScreen() {
                   </View>
                   <ThemedText style={styles.serviceDetail}>
                     {service.key === 'sunarp' && sunarpData
-                      ? `Propietarios: ${sunarpData.propietarios?.length ?? 0}`
+                      ? `Propietarios: ${sunarpOwnersCount}`
                       : service.detail}
                   </ThemedText>
                   {service.key === 'soat'
@@ -1620,6 +1720,14 @@ const styles = StyleSheet.create({
   ownerName: {
     color: '#F8FAFC',
     fontWeight: '700',
+  },
+  ownerList: {
+    marginTop: 4,
+    gap: 2,
+  },
+  ownerLine: {
+    color: '#CBD5E1',
+    fontSize: 12,
   },
   ownerMeta: {
     color: '#94A3B8',
