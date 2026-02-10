@@ -7,27 +7,59 @@ import {
   ScrollView,
   StyleSheet,
   View,
+  Image,
 } from 'react-native';
 
 import * as Linking from 'expo-linking';
-
+import Constants from 'expo-constants';
+import { maybeCompleteAuthSession, openAuthSessionAsync } from 'expo-web-browser';
 import { Fonts } from '@/constants/theme';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { hasSupabaseConfig, supabase } from '@/lib/supabase';
+//
+import { useWindowDimensions } from 'react-native';
+
+
+maybeCompleteAuthSession();
 
 const palette = {
-  primary: '#0E8BFF',
-  accent: '#0CD3A2',
-  danger: '#F05941',
-  surface: '#0A1024',
-  surfaceAlt: '#0E1530',
-  muted: '#1F2937',
+  bg: '#F8FAFC',          // fondo general
+  card: '#FFFFFF',       // cards principales
+  card2: '#F1F5F9',      // cards secundarias
+  border: '#E5E7EB',     // bordes suaves
+  text: '#0F172A',       // texto principal
+  subtext: '#475569',    // texto secundario
+  muted: '#64748B',
+  primary: '#2563EB',    // azul principal
+  accent: '#0D9488',     // verde confianza
+  danger: '#DC2626',
+};
+
+const getRedirectTo = () => {
+  if (Platform.OS === 'web') return Linking.createURL('/');
+  const slug = Constants.expoConfig?.slug ?? 'phunter';
+  const owner = Constants.expoConfig?.owner ?? Constants.easConfig?.projectOwner ?? 'anonymous';
+  if (Constants.appOwnership === 'expo') return `https://auth.expo.io/@${owner}/${slug}`;
+  return Linking.createURL('/');
+};
+
+const getProxyStartUrl = (authUrl: string, returnUrl: string) => {
+  if (Platform.OS === 'web' || Constants.appOwnership !== 'expo') return authUrl;
+  const slug = Constants.expoConfig?.slug ?? 'phunter';
+  const owner = Constants.expoConfig?.owner ?? Constants.easConfig?.projectOwner ?? 'anonymous';
+  const projectFullName = Constants.expoConfig?.originalFullName ?? `@${owner}/${slug}`;
+  const params = new URLSearchParams({ authUrl, returnUrl });
+  return `https://auth.expo.io/${projectFullName}/start?${params.toString()}`;
 };
 
 export default function LoginScreen() {
+
+  const { width } = useWindowDimensions();
+  const isSmall = width < 360;      // celulares pequeños
+  const isLarge = width >= 420;     // celulares grandes
+  
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const signInWithGoogle = async () => {
@@ -37,17 +69,49 @@ export default function LoginScreen() {
     }
     setLoading(true);
     setError(null);
-    setMessage(null);
+
     try {
-      const redirectTo = Linking.createURL('/');
+      const redirectTo = getRedirectTo();
       const { data, error: googleError } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: { redirectTo },
       });
+
       if (googleError) {
         setError('No pudimos iniciar con Google. Revisa que el acceso esté permitido.');
-      } else if (!data?.url) {
+        return;
+      }
+      if (!data?.url) {
         setError('No se pudo abrir Google, inténtalo de nuevo.');
+        return;
+      }
+
+      const returnUrl = Linking.createURL('/');
+      const authUrl = getProxyStartUrl(data.url, returnUrl);
+      const result = await openAuthSessionAsync(authUrl, returnUrl);
+
+      if (result.type !== 'success' || !result.url) {
+        setError('Inicio cancelado o sin respuesta.');
+        return;
+      }
+
+      const url = new URL(result.url);
+      const code = url.searchParams.get('code');
+      const hashParams = new URLSearchParams(url.hash.replace('#', ''));
+      const access_token = url.searchParams.get('access_token') ?? hashParams.get('access_token');
+      const refresh_token = url.searchParams.get('refresh_token') ?? hashParams.get('refresh_token');
+
+      if (code) {
+        const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+        if (exchangeError) setError('No se pudo completar la sesión.');
+      } else if (access_token && refresh_token) {
+        const { error: sessionError } = await supabase.auth.setSession({
+          access_token,
+          refresh_token,
+        });
+        if (sessionError) setError('No se pudo completar la sesión.');
+      } else {
+        setError('No se pudo completar la sesión.');
       }
     } catch (err: any) {
       setError(err?.message ?? 'Error al iniciar sesión. Vuelve a intentar.');
@@ -59,31 +123,35 @@ export default function LoginScreen() {
   const showMissingConfig = !hasSupabaseConfig;
 
   return (
-    <ThemedView style={styles.screen} lightColor="#040915" darkColor="#040915">
+    <ThemedView style={styles.screen} lightColor={palette.bg} darkColor={palette.bg}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.content} bounces={false}>
+          {/* HERO */}
           <View style={styles.hero}>
-            <ThemedText style={styles.overline}>PeruCheck</ThemedText>
-            <ThemedText type="title" style={styles.title}>
-              Entra y consulta al instante
-            </ThemedText>
-            <ThemedText style={styles.subtitle}>
-              Crea tu cuenta con Google, recibe tus consultas de cortesía y lleva el historial en un
-              solo lugar.
-            </ThemedText>
-            <View style={styles.heroBadges}>
-              <Badge label="Seguro con Supabase" tone={palette.accent} />
-              <Badge label="Sesión guardada" tone={palette.primary} />
+            {/* LOGO + MARCA EN LA MISMA FILA */}
+            <View style={styles.brandRow}>
+              <Image source={require('../assets/images/logo_PeruCheck.png')} style={styles.logoInline} />
+              <ThemedText style={styles.brandTitleInline}>
+                PERUCHECK
+              </ThemedText>
             </View>
+
+            {/* TÍTULO PRINCIPAL */}
+            <ThemedText style={styles.title}>
+              Entra y consulta{'\n'}al instante
+            </ThemedText>
+
+            <ThemedText style={styles.subtitle}>
+              Crea tu cuenta con Google, recibe tus consultas de cortesía y lleva el historial en un solo lugar.
+            </ThemedText>
           </View>
 
+
+          {/* CARD GOOGLE */}
           <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <ThemedText style={styles.cardTitle}>Accede con Google</ThemedText>
-              <Badge label="1 clic" tone={palette.accent} />
-            </View>
+            <ThemedText style={styles.cardTitle}>Accede con Google</ThemedText>
 
             {showMissingConfig ? (
               <ThemedText style={styles.errorText}>
@@ -91,32 +159,59 @@ export default function LoginScreen() {
               </ThemedText>
             ) : (
               <>
-                <ThemedText style={styles.subtitle}>
+                <ThemedText style={styles.cardSubtitle}>
                   Mantendremos tu sesión iniciada y podrás cerrar sesión cuando quieras.
                 </ThemedText>
-                <Pressable style={styles.primaryButton} onPress={signInWithGoogle} disabled={loading}>
+
+                <Pressable
+                  onPress={signInWithGoogle}
+                  disabled={loading}
+                  style={({ pressed }) => [
+                    styles.primaryButton,
+                    pressed && styles.primaryButtonPressed,
+                    loading && { opacity: 0.85 },
+                  ]}
+                >
                   {loading ? (
                     <ActivityIndicator color="#fff" />
                   ) : (
-                    <ThemedText style={styles.primaryButtonText}>Continuar con Google</ThemedText>
+                    <View style={styles.googleButtonInner}>
+                      <View style={styles.iconSlot}>
+                        <Image
+                          source={require('../assets/images/logo_google.png')}
+                          style={styles.googleIcon}
+                        />
+                      </View>
+
+                      <ThemedText style={styles.primaryButtonText}>
+                        Continuar con Google
+                      </ThemedText>
+
+                      <View style={styles.iconSlot} />
+                    </View>
                   )}
                 </Pressable>
+
+
               </>
             )}
 
-            {message && <ThemedText style={styles.message}>{message}</ThemedText>}
             {error && <ThemedText style={styles.errorText}>{error}</ThemedText>}
           </View>
 
-          <View style={styles.helperCard}>
-            <ThemedText style={styles.helperTitle}>Lo que verás al entrar</ThemedText>
-            <ThemedText style={styles.helperItem}>• Panel con tus consultas y resultados</ThemedText>
-            <ThemedText style={styles.helperItem}>• Créditos de bienvenida listos para usar</ThemedText>
-            <ThemedText style={styles.helperItem}>• Historial y descargas en tu perfil</ThemedText>
-            <View style={styles.helperInline}>
-              <Badge label="Sin compartir tu correo" tone={palette.primary} />
-              <Badge label="Puedes cerrar sesión cuando quieras" tone={palette.accent} />
-            </View>
+          {/* INFO CARD */}
+          <View style={styles.cardInfo}>
+            <ThemedText style={styles.infoTitle}>Lo que verás al entrar</ThemedText>
+
+            <InfoRow text="Panel con tus consultas y resultados" />
+            <InfoRow text="Créditos de bienvenida listos para usar" />
+            <InfoRow text="Historial y descargas en tu perfil" />
+          </View>
+
+          {/* BOTTOM CHIPS */}
+          <View style={styles.badgeRowBottom}>
+            <BottomChip label="Sin compartir tu correo" tone={palette.primary} />
+            <BottomChip label="Puedes cerrar sesión cuando quieras" tone={palette.accent} />
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -124,75 +219,95 @@ export default function LoginScreen() {
   );
 }
 
-function Badge({ label, tone }: { label: string; tone: string }) {
+
+function BottomChip({ label, tone }: { label: string; tone: string }) {
   return (
-    <View style={[styles.badge, { backgroundColor: `${tone}20`, borderColor: tone }]}>
-      <ThemedText style={[styles.badgeText, { color: tone }]}>{label}</ThemedText>
+    <View style={[styles.bottomChip, { borderColor: tone }]}>
+      <ThemedText style={[styles.bottomChipText, { color: tone }]}>{label}</ThemedText>
+    </View>
+  );
+}
+
+function InfoRow({ text }: { text: string }) {
+  return (
+    <View style={styles.infoRow}>
+      <View style={styles.checkCircle}>
+        <ThemedText style={styles.checkMark}>✓</ThemedText>
+      </View>
+      <ThemedText style={styles.infoText}>{text}</ThemedText>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-  },
+  screen: { flex: 1 },
   content: {
-    padding: 24,
+    paddingHorizontal: 22,
+    paddingTop: 26,
+    paddingBottom: 28,
     gap: 18,
   },
+
   hero: {
+    alignItems: 'center',
+    paddingTop: 12,
     gap: 10,
-    padding: 18,
-    borderRadius: 18,
-    backgroundColor: palette.surface,
-    borderWidth: 1,
-    borderColor: '#162042',
   },
-  heroBadges: {
-    flexDirection: 'row',
-    gap: 8,
-    flexWrap: 'wrap',
-  },
-  header: {
-    gap: 8,
-  },
-  overline: {
+
+  brand: {
     color: palette.accent,
-    fontSize: 13,
-    letterSpacing: 1,
+    fontSize: 12,
+    letterSpacing: 2,
     textTransform: 'uppercase',
-    fontFamily: Fonts.rounded,
   },
+
   title: {
-    color: '#F8FAFC',
+    color: palette.text,
     fontFamily: Fonts.rounded,
+    fontSize: 34,
+    lineHeight: 40,
+    textAlign: 'center',
   },
+
   subtitle: {
-    color: '#CBD5E1',
+    color: palette.subtext,
+    fontSize: 14.5,
+    lineHeight: 22,
+    textAlign: 'center',
     maxWidth: 360,
+    marginTop: 2,
   },
+
   card: {
-    backgroundColor: palette.surfaceAlt,
+    backgroundColor: palette.card,
     borderRadius: 18,
     padding: 18,
     gap: 12,
     borderWidth: 1,
-    borderColor: '#162042',
+    borderColor: palette.border,
+
+    // SOMBRA
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 2,
   },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
+
   cardTitle: {
-    color: '#F8FAFC',
-    fontSize: 18,
-    fontWeight: '700',
+    color: palette.text,
+    fontSize: 20,
+    fontWeight: '800',
   },
-  label: {
-    color: '#9CA3AF',
-    fontSize: 13,
+
+  cardSubtitle: {
+    color: palette.subtext,
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 2,
+    marginBottom: 6,
+    maxWidth: 340,
   },
+
   primaryButton: {
     height: 52,
     borderRadius: 12,
@@ -200,49 +315,144 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+
+  primaryButtonPressed: {
+    backgroundColor: '#1D4ED8', // azul más oscuro
+    transform: [{ scale: 0.98 }],
+  },
+
   primaryButtonText: {
     color: '#fff',
-    fontWeight: '800',
-    letterSpacing: 0.4,
+    fontWeight: '900',
+    letterSpacing: 0.2,
   },
-  message: {
-    color: palette.accent,
-    fontWeight: '700',
-  },
+
   errorText: {
     color: palette.danger,
-    fontWeight: '700',
-  },
-  helperCard: {
-    backgroundColor: '#0F162A',
-    borderRadius: 14,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: '#162042',
-    gap: 6,
-  },
-  helperTitle: {
-    color: '#F8FAFC',
-    fontWeight: '700',
-  },
-  helperItem: {
-    color: '#CBD5E1',
-  },
-  helperInline: {
-    flexDirection: 'row',
-    gap: 8,
-    flexWrap: 'wrap',
+    fontWeight: '800',
     marginTop: 6,
   },
-  badge: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
+
+  cardInfo: {
+    backgroundColor: palette.card2,
+    borderRadius: 18,
+    padding: 18,
+    gap: 12,
     borderWidth: 1,
-    backgroundColor: palette.surfaceAlt,
+    borderColor: palette.border,
+    // SOMBRA
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 2,
   },
-  badgeText: {
+
+  infoTitle: {
+    color: palette.text,
+    fontWeight: '800',
+    fontSize: 18,
+  },
+
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+
+  checkCircle: {
+    width: 22,
+    height: 22,
+    borderRadius: 999,
+    borderWidth: 2,
+    borderColor: palette.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  checkMark: {
+    color: palette.accent,
+    fontWeight: '900',
+    marginTop: -1,
+  },
+
+  infoText: {
+    color: palette.subtext,
+    fontSize: 14,
+  },
+
+  badgeRowBottom: {
+    flexDirection: 'row',
+    gap: 14,
+    justifyContent: 'space-between',
+    marginTop: 6,
+  },
+
+  bottomChip: {
+    flex: 1,
+    height: 46,
+    borderRadius: 12,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+
+  bottomChipText: {
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: '800',
+    textAlign: 'center',
+    paddingHorizontal: 8,
   },
+
+  logo: {
+    width: 64,
+    height: 64,
+    marginBottom: 6,
+  },
+
+  brandTitle: {
+    fontSize: 20,
+    fontWeight: '900',
+    letterSpacing: 2,
+    color: palette.accent,
+    marginBottom: 6,
+  },
+
+  brandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 8,
+  },
+
+  logoInline: {
+    width: 36,
+    height: 36,
+    resizeMode: 'contain',
+  },
+  brandTitleInline: {
+    fontSize: 20,
+    fontWeight: '900',
+    letterSpacing: 2,
+    color: palette.accent,
+    marginTop: -1,
+  },
+
+  googleButtonInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+  },
+
+  iconSlot: {
+    width: 40,        // mismo ancho a izquierda y derecha
+    alignItems: 'center',
+  },
+  googleIcon: {
+    width: 60,
+    height: 60,
+    resizeMode: 'contain',
+  },
+
 });

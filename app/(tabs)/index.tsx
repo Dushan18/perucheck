@@ -21,14 +21,24 @@ import { getUsageSnapshot, registerConsulta, type UsageSnapshot } from '@/lib/bi
 import { useAuth } from '@/providers/auth-provider';
 
 const palette = {
-  primary: '#0A3A73', // azul marino
-  accent: '#0F8A3C', // verde institucional
-  gold: '#D9A441', // dorado PNP
+  // Base claro
+  bg: '#F8FAFC',
+  surface: '#FFFFFF',
+  surfaceAlt: '#F1F5F9',
+  surfaceSoft: '#EEF2FF',
+  // Bordes / texto
+  border: '#E5E7EB',
+  borderSoft: '#E2E8F0',
+  text: '#0F172A',
+  subtext: '#475569',
+  muted: '#64748B',
+  // Marca
+  primary: '#2563EB',
+  accent: '#0D9488',
+  gold: '#D9A441',
   warning: '#F6A609',
-  danger: '#B12C2C',
-  muted: '#1F2937',
-  surface: '#0B1426',
-  surfaceAlt: '#0F1C34',
+  danger: '#DC2626',
+
 };
 
 const formatExpiry = (iso?: string | null) => {
@@ -258,9 +268,9 @@ const parseSunarp = (raw: string, full?: any): SunarpData | null => {
   const dniPropietario = `${datos?.dni_propietario || ''}`.trim() || undefined;
   const propietarioUsado = datos?.propietario_usado_para_dni
     ? [datos.propietario_usado_para_dni?.nombres, datos.propietario_usado_para_dni?.ap_paterno, datos.propietario_usado_para_dni?.ap_materno]
-        .filter(Boolean)
-        .join(' ')
-        .trim()
+      .filter(Boolean)
+      .join(' ')
+      .trim()
     : undefined;
   const captchaDetectado = datos?.captcha_detectado || full?.captcha_detectado;
   const captchaValido = datos?.captcha_valido ?? full?.captcha_valido;
@@ -331,19 +341,21 @@ const parseRedam = (raw: string, full?: any) => {
   };
 };
 
+const apiBase = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:8000';
+
 const serviceConfigs: Record<
   string,
   { endpoint: string; parser?: (raw: string, full?: any) => any; field: 'placa' | 'dni'; scope: 'vehiculo' | 'persona' }
 > = {
-  soat: { endpoint: 'http://localhost:8000/consulta-soat', parser: parseSoat, field: 'placa', scope: 'vehiculo' },
-  itv: { endpoint: 'http://localhost:8000/consulta-itv', parser: parseItv, field: 'placa', scope: 'vehiculo' },
-  satlima: { endpoint: 'http://localhost:8000/consulta-sat', field: 'placa', scope: 'vehiculo' },
-  satcallao: { endpoint: 'http://localhost:8000/consulta-sat-callao', field: 'placa', scope: 'vehiculo' },
-  sutran: { endpoint: 'http://localhost:8000/consulta-sutran', field: 'placa', scope: 'vehiculo' },
-  sunarp: { endpoint: 'http://localhost:8000/consulta-vehicular', parser: parseSunarp, field: 'placa', scope: 'vehiculo' },
-  licencia: { endpoint: 'http://localhost:8000/consulta-licencia-dni', parser: parseLicencia, field: 'dni', scope: 'persona' },
-  dniperu: { endpoint: 'http://localhost:8000/consulta-dni-peru', parser: parseDniPeru, field: 'dni', scope: 'persona' },
-  redam: { endpoint: 'http://localhost:8000/consulta-redam-dni', parser: parseRedam, field: 'dni', scope: 'persona' },
+  soat: { endpoint: `${apiBase}/consulta-soat`, parser: parseSoat, field: 'placa', scope: 'vehiculo' },
+  itv: { endpoint: `${apiBase}/consulta-itv`, parser: parseItv, field: 'placa', scope: 'vehiculo' },
+  satlima: { endpoint: `${apiBase}/consulta-sat`, field: 'placa', scope: 'vehiculo' },
+  satcallao: { endpoint: `${apiBase}/consulta-sat-callao`, field: 'placa', scope: 'vehiculo' },
+  sutran: { endpoint: `${apiBase}/consulta-sutran`, field: 'placa', scope: 'vehiculo' },
+  sunarp: { endpoint: `${apiBase}/consulta-vehicular`, parser: parseSunarp, field: 'placa', scope: 'vehiculo' },
+  licencia: { endpoint: `${apiBase}/consulta-licencia-dni`, parser: parseLicencia, field: 'dni', scope: 'persona' },
+  dniperu: { endpoint: `${apiBase}/consulta-dni-peru`, parser: parseDniPeru, field: 'dni', scope: 'persona' },
+  redam: { endpoint: `${apiBase}/consulta-redam-dni`, parser: parseRedam, field: 'dni', scope: 'persona' },
 };
 
 const enrichSunarpWithDni = async (parsed: SunarpData | null): Promise<SunarpData | null> => {
@@ -387,13 +399,13 @@ const vehicleServices: {
   statusColor: string;
   detail: string;
 }[] = [
-  { key: 'sutran', title: 'SUTRAN', status: 'Sin inmovilización', statusColor: palette.accent, detail: 'Papeletas MTC: 0' },
-  { key: 'sunarp', title: 'SUNARP', status: 'Propiedad vigente', statusColor: palette.accent, detail: 'Placa y VIN coinciden' },
-  { key: 'soat', title: 'SOAT', status: 'Consulta activa', statusColor: palette.accent, detail: 'Vigencia y aseguradora' },
-  { key: 'satlima', title: 'SAT Lima', status: 'Pendiente', statusColor: palette.danger, detail: 'Papeletas y deudas' },
-  { key: 'satcallao', title: 'SAT Callao', status: 'Pendiente', statusColor: palette.accent, detail: 'Papeletas Callao' },
-  { key: 'itv', title: 'Revisión técnica', status: 'Pendiente', statusColor: palette.warning, detail: 'Última vigencia' },
-];
+    { key: 'sutran', title: 'SUTRAN', status: 'Sin inmovilización', statusColor: palette.accent, detail: 'Papeletas MTC: 0' },
+    { key: 'sunarp', title: 'SUNARP', status: 'Propiedad vigente', statusColor: palette.accent, detail: 'Placa y VIN coinciden' },
+    { key: 'soat', title: 'SOAT', status: 'Consulta activa', statusColor: palette.accent, detail: 'Vigencia y aseguradora' },
+    { key: 'satlima', title: 'SAT Lima', status: 'Pendiente', statusColor: palette.danger, detail: 'Papeletas y deudas' },
+    { key: 'satcallao', title: 'SAT Callao', status: 'Pendiente', statusColor: palette.accent, detail: 'Papeletas Callao' },
+    { key: 'itv', title: 'Revisión técnica', status: 'Pendiente', statusColor: palette.warning, detail: 'Última vigencia' },
+  ];
 
 const quickActions: { label: string; icon: ComponentProps<typeof MaterialIcons>['name'] }[] = [
   { label: 'Descargar PDF', icon: 'file-download' },
@@ -415,12 +427,12 @@ const personChecks: {
   statusColor: string;
   detail: string;
 }[] = [
-  { key: 'dniperu', title: 'DNI a nombre', status: 'Pendiente', statusColor: palette.accent, detail: 'Nombres y apellidos' },
-  { key: 'licencia', title: 'Licencia MTC', status: 'Pendiente', statusColor: palette.primary, detail: 'Clase y vigencia' },
-  { key: 'redam', title: 'REDAM', status: 'Pendiente', statusColor: palette.accent, detail: 'Registros vigentes' },
-  { key: 'recompensas', title: 'Recompensas', status: 'Pendiente', statusColor: palette.accent, detail: 'Consulta manual' },
-  { key: 'paquetes', title: 'Comprar paquetes', status: 'PeruCheck', statusColor: palette.gold, detail: 'Créditos de consultas' },
-];
+    { key: 'dniperu', title: 'DNI a nombre', status: 'Pendiente', statusColor: palette.accent, detail: 'Nombres y apellidos' },
+    { key: 'licencia', title: 'Licencia MTC', status: 'Pendiente', statusColor: palette.primary, detail: 'Clase y vigencia' },
+    { key: 'redam', title: 'REDAM', status: 'Pendiente', statusColor: palette.accent, detail: 'Registros vigentes' },
+    { key: 'recompensas', title: 'Recompensas', status: 'Pendiente', statusColor: palette.accent, detail: 'Consulta manual' },
+    { key: 'paquetes', title: 'Comprar paquetes', status: 'PeruCheck', statusColor: palette.gold, detail: 'Créditos de consultas' },
+  ];
 
 const vehicle = {
   plate: 'ABC-123',
@@ -739,60 +751,60 @@ function renderPersonServiceState(
               <ThemedText style={styles.metaText}>Puntos: {state.parsed.puntosFirmes}</ThemedText>
             </View>
           ) : null}
-        {state.parsed.infracciones ? (
-          <View style={styles.metaPill}>
-            <ThemedText style={styles.metaText}>Infracciones: {state.parsed.infracciones}</ThemedText>
+          {state.parsed.infracciones ? (
+            <View style={styles.metaPill}>
+              <ThemedText style={styles.metaText}>Infracciones: {state.parsed.infracciones}</ThemedText>
+            </View>
+          ) : null}
+          {state.parsed.graves ? (
+            <View style={styles.metaPill}>
+              <ThemedText style={styles.metaText}>Graves: {state.parsed.graves}</ThemedText>
+            </View>
+          ) : null}
+          {state.parsed.muyGraves ? (
+            <View style={styles.metaPill}>
+              <ThemedText style={styles.metaText}>Muy graves: {state.parsed.muyGraves}</ThemedText>
+            </View>
+          ) : null}
+        </View>
+        {Array.isArray(state.parsed.tramites) && state.parsed.tramites.length ? (
+          <View style={styles.listCard}>
+            <ThemedText style={styles.personDetail}>Trámites recientes</ThemedText>
+            {state.parsed.tramites.slice(0, 3).map((t: any, idx: number) => (
+              <View key={idx} style={styles.rowBetween}>
+                <ThemedText style={styles.personDetail}>
+                  {t['TRAMITE'] || 'Trámite'} · {t['CATEGORIA'] || t['CATEGORÍA'] || ''}
+                </ThemedText>
+                <ThemedText style={styles.personDetail}>
+                  {formatDisplayDate(t['FECHA VENCIMIENTO'] || t['VENCIMIENTO'])}
+                </ThemedText>
+              </View>
+            ))}
           </View>
         ) : null}
-        {state.parsed.graves ? (
-          <View style={styles.metaPill}>
-            <ThemedText style={styles.metaText}>Graves: {state.parsed.graves}</ThemedText>
+        {Array.isArray(state.parsed.bonificaciones) && state.parsed.bonificaciones.length ? (
+          <View style={styles.listCard}>
+            <ThemedText style={styles.personDetail}>Bonificaciones</ThemedText>
+            {state.parsed.bonificaciones.slice(0, 3).map((b: any, idx: number) => (
+              <View key={idx} style={styles.rowBetween}>
+                <ThemedText style={styles.personDetail}>
+                  Hasta {formatDisplayDate(b['VIGENTE HASTA'])}
+                </ThemedText>
+                <ThemedText style={styles.personDetail}>
+                  Disp: {b['DISPONIBLE'] ?? 0} · Usado: {b['UTILIZADO'] ?? 0}
+                </ThemedText>
+              </View>
+            ))}
           </View>
         ) : null}
-        {state.parsed.muyGraves ? (
-          <View style={styles.metaPill}>
-            <ThemedText style={styles.metaText}>Muy graves: {state.parsed.muyGraves}</ThemedText>
-          </View>
+        {onRefresh ? (
+          <Pressable style={styles.secondaryButton} onPress={onRefresh}>
+            <ThemedText style={styles.secondaryText}>Actualizar licencia</ThemedText>
+          </Pressable>
         ) : null}
       </View>
-      {Array.isArray(state.parsed.tramites) && state.parsed.tramites.length ? (
-        <View style={styles.listCard}>
-          <ThemedText style={styles.personDetail}>Trámites recientes</ThemedText>
-          {state.parsed.tramites.slice(0, 3).map((t: any, idx: number) => (
-            <View key={idx} style={styles.rowBetween}>
-              <ThemedText style={styles.personDetail}>
-                {t['TRAMITE'] || 'Trámite'} · {t['CATEGORIA'] || t['CATEGORÍA'] || ''}
-              </ThemedText>
-              <ThemedText style={styles.personDetail}>
-                {formatDisplayDate(t['FECHA VENCIMIENTO'] || t['VENCIMIENTO'])}
-              </ThemedText>
-            </View>
-          ))}
-        </View>
-      ) : null}
-      {Array.isArray(state.parsed.bonificaciones) && state.parsed.bonificaciones.length ? (
-        <View style={styles.listCard}>
-          <ThemedText style={styles.personDetail}>Bonificaciones</ThemedText>
-          {state.parsed.bonificaciones.slice(0, 3).map((b: any, idx: number) => (
-            <View key={idx} style={styles.rowBetween}>
-              <ThemedText style={styles.personDetail}>
-                Hasta {formatDisplayDate(b['VIGENTE HASTA'])}
-              </ThemedText>
-              <ThemedText style={styles.personDetail}>
-                Disp: {b['DISPONIBLE'] ?? 0} · Usado: {b['UTILIZADO'] ?? 0}
-              </ThemedText>
-            </View>
-          ))}
-        </View>
-      ) : null}
-      {onRefresh ? (
-        <Pressable style={styles.secondaryButton} onPress={onRefresh}>
-          <ThemedText style={styles.secondaryText}>Actualizar licencia</ThemedText>
-        </Pressable>
-      ) : null}
-    </View>
-  );
-}
+    );
+  }
 
   if (key === 'dniperu' && state.parsed) {
     return (
@@ -1086,12 +1098,11 @@ export default function HomeScreen() {
 
   return (
     <ParallaxScrollView
-      headerBackgroundColor={{ light: '#0A1F44', dark: '#07132B' }}
+      headerBackgroundColor={{ light: palette.bg, dark: '#07132B' }}
       headerImage={
         <View style={styles.headerHero}>
           <View style={styles.headerGlow} />
           <Image
-            source={require('@/assets/images/react-logo.png')}
             style={styles.heroLogo}
             contentFit="contain"
           />
@@ -1120,9 +1131,8 @@ export default function HomeScreen() {
           {usageLoading
             ? 'Actualizando créditos…'
             : usage
-              ? `${usage.creditsRemaining != null ? `${usage.creditsRemaining} restantes` : 'Créditos ilimitados'}${
-                  usage.validUntil ? ` · vence ${formatExpiry(usage.validUntil)}` : ''
-                }`
+              ? `${usage.creditsRemaining != null ? `${usage.creditsRemaining} restantes` : 'Créditos ilimitados'}${usage.validUntil ? ` · vence ${formatExpiry(usage.validUntil)}` : ''
+              }`
               : 'Sin información de créditos'}
         </ThemedText>
         <View style={styles.usageRow}>
@@ -1254,19 +1264,19 @@ export default function HomeScreen() {
                   </ThemedText>
                   {service.key === 'soat'
                     ? renderSoatState(serviceState['soat'], () =>
-                        fetchService('soat', undefined, { force: true })
-                      )
+                      fetchService('soat', undefined, { force: true })
+                    )
                     : service.key === 'itv'
-                    ? renderItvState(serviceState['itv'], () =>
+                      ? renderItvState(serviceState['itv'], () =>
                         fetchService('itv', undefined, { force: true })
                       )
-                    : service.key === 'sunarp'
-                    ? renderSunarpState(serviceState['sunarp'], () =>
-                        fetchService('sunarp', undefined, { force: true })
-                      )
-                    : renderGenericServiceState(serviceState[service.key], () =>
-                        fetchService(service.key, undefined, { force: true })
-                      )}
+                      : service.key === 'sunarp'
+                        ? renderSunarpState(serviceState['sunarp'], () =>
+                          fetchService('sunarp', undefined, { force: true })
+                        )
+                        : renderGenericServiceState(serviceState[service.key], () =>
+                          fetchService(service.key, undefined, { force: true })
+                        )}
                 </Pressable>
               ))}
             </ScrollView>
@@ -1331,22 +1341,43 @@ const styles = StyleSheet.create({
     padding: 18,
     gap: 12,
     backgroundColor: palette.surface,
+    borderWidth: 1,
+    borderColor: palette.border,
   },
-  headerHero: {
-    flex: 1,
-    padding: 32,
-    position: 'relative',
-    overflow: 'hidden',
+  heroTitle: {
+    maxWidth: 280,
+    lineHeight: 34,
+    fontFamily: Fonts.rounded,
+    color: palette.text,
+  },
+  heroSubtitle: {
+    color: palette.subtext,
+    maxWidth: 360,
+  },
+  heroOverline: {
+    color: palette.accent,
+    fontSize: 14,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    fontFamily: Fonts.rounded,
   },
   headerGlow: {
     position: 'absolute',
     width: 260,
     height: 260,
     borderRadius: 130,
-    backgroundColor: '#0E8BFF33',
+    backgroundColor: `${palette.primary}1A`, // azul suave
     top: 30,
     right: -60,
   },
+
+  headerHero: {
+    flex: 1,
+    padding: 32,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+
   heroLogo: {
     width: 96,
     height: 96,
@@ -1358,23 +1389,6 @@ const styles = StyleSheet.create({
   headerCopy: {
     flex: 1,
     gap: 8,
-  },
-  heroOverline: {
-    color: palette.accent,
-    fontSize: 14,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    fontFamily: Fonts.rounded,
-  },
-  heroTitle: {
-    maxWidth: 280,
-    lineHeight: 34,
-    fontFamily: Fonts.rounded,
-    color: '#F8FAFC',
-  },
-  heroSubtitle: {
-    color: '#D1D5DB',
-    maxWidth: 360,
   },
   heroBadges: {
     flexDirection: 'row',
@@ -1394,16 +1408,18 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#1E2F52',
-    backgroundColor: '#0E1931',
+    borderColor: palette.border,
+    backgroundColor: palette.surfaceAlt,
   },
   modePillActive: {
-    backgroundColor: palette.primary,
-    borderColor: palette.primary,
+    backgroundColor: `${palette.primary}1A`,
+    borderColor: `${palette.primary}55`,
   },
   modeText: {
     fontWeight: '700',
+    color: palette.text,
   },
+
   inputCard: {
     gap: 10,
     padding: 14,

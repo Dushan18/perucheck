@@ -11,11 +11,15 @@ import {
 } from 'react-native';
 
 import * as Linking from 'expo-linking';
+import Constants from 'expo-constants';
+import { maybeCompleteAuthSession, openAuthSessionAsync } from 'expo-web-browser';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Fonts } from '@/constants/theme';
 import { hasSupabaseConfig, supabase } from '@/lib/supabase';
+
+maybeCompleteAuthSession();
 
 const palette = {
   primary: '#0E8BFF',
@@ -23,6 +27,30 @@ const palette = {
   danger: '#F05941',
   surface: '#0B1021',
   muted: '#1F2937',
+};
+
+const getRedirectTo = () => {
+  if (Platform.OS === 'web') {
+    return Linking.createURL('/');
+  }
+  // Expo Go needs the auth.expo.io proxy for OAuth redirects.
+  const slug = Constants.expoConfig?.slug ?? 'phunter';
+  const owner = Constants.expoConfig?.owner ?? Constants.easConfig?.projectOwner ?? 'anonymous';
+  if (Constants.appOwnership === 'expo') {
+    return `https://auth.expo.io/@${owner}/${slug}`;
+  }
+  return Linking.createURL('/');
+};
+
+const getProxyStartUrl = (authUrl: string, returnUrl: string) => {
+  if (Platform.OS === 'web' || Constants.appOwnership !== 'expo') {
+    return authUrl;
+  }
+  const slug = Constants.expoConfig?.slug ?? 'phunter';
+  const owner = Constants.expoConfig?.owner ?? Constants.easConfig?.projectOwner ?? 'anonymous';
+  const projectFullName = Constants.expoConfig?.originalFullName ?? `@${owner}/${slug}`;
+  const params = new URLSearchParams({ authUrl, returnUrl });
+  return `https://auth.expo.io/${projectFullName}/start?${params.toString()}`;
 };
 
 export default function LoginScreen() {
@@ -116,18 +144,50 @@ export default function LoginScreen() {
     setLoading(true);
     setError(null);
     try {
-      const redirectTo = Linking.createURL('/');
+      const redirectTo = getRedirectTo();
       const { data, error: googleError } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: { redirectTo },
       });
       if (googleError) {
         setError(googleError.message);
-      } else if (!data?.url) {
-        setError('No se pudo iniciar sesión con Google.');
+        return;
+      }
+      if (!data?.url) {
+        setError('No se pudo iniciar sesi??n con Google.');
+        return;
+      }
+      const returnUrl = Linking.createURL('/');
+      const authUrl = getProxyStartUrl(data.url, returnUrl);
+      const result = await openAuthSessionAsync(authUrl, returnUrl);
+      if (result.type !== 'success' || !result.url) {
+        setError('Inicio cancelado o sin respuesta.');
+        return;
+      }
+      const url = new URL(result.url);
+      const code = url.searchParams.get('code');
+      const hashParams = new URLSearchParams(url.hash.replace('#', ''));
+      const access_token = url.searchParams.get('access_token') ?? hashParams.get('access_token');
+      const refresh_token = url.searchParams.get('refresh_token') ?? hashParams.get('refresh_token');
+
+      if (code) {
+        const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+        if (exchangeError) {
+          setError('No se pudo completar la sesion.');
+        }
+      } else if (access_token && refresh_token) {
+        const { error: sessionError } = await supabase.auth.setSession({
+          access_token,
+          refresh_token,
+        });
+        if (sessionError) {
+          setError('No se pudo completar la sesion.');
+        }
+      } else {
+        setError('No se pudo completar la sesion.');
       }
     } catch (err: any) {
-      setError(err?.message ?? 'Error al iniciar sesión con Google.');
+      setError(err?.message ?? 'Error al iniciar sesi??n con Google.');
     } finally {
       setLoading(false);
     }
