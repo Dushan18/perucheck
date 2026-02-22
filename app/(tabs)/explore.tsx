@@ -1,6 +1,6 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 
 import ParallaxScrollView from '@/components/parallax-scroll-view';
@@ -10,13 +10,19 @@ import { Fonts } from '@/constants/theme';
 import { changePlan, getPlans, getUsageSnapshot, type PlanOption, type UsageSnapshot } from '@/lib/billing';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/providers/auth-provider';
+import { useRouter } from 'expo-router';
 
 const palette = {
-  primary: '#0E8BFF',
-  accent: '#0CD3A2',
-  warning: '#F6A609',
-  surface: '#0B1021',
-  surfaceAlt: '#0F172A',
+  surface: '#FFFFFF',
+  surfaceAlt: '#F3F6FB',
+  border: '#cfc9c9',
+  text: '#0B1220',
+  subtext: '#5B6B84',
+  muted: '#6B7C93',
+  primary: '#1D4ED8',
+  primarySoft: '#EAF1FF',
+  accent: '#16A34A',
+  danger: '#DC2626',
 };
 
 const formatExpiry = (iso?: string | null) => {
@@ -25,20 +31,13 @@ const formatExpiry = (iso?: string | null) => {
   return Number.isNaN(d.getTime()) ? 'Sin vencimiento' : d.toLocaleDateString();
 };
 
-type ConsultaRow = {
-  id: string;
-  tipo: string;
-  placa: string | null;
-  dni: string | null;
-  created_at: string;
-  success: boolean | null;
-  resumen: string | null;
-};
 
 export default function ProfileScreen() {
   const { session, signOut } = useAuth();
+  const router = useRouter();
+  const { width } = useWindowDimensions();
+  const contentMax = Math.min(720, width - 32);
   const [usage, setUsage] = useState<UsageSnapshot | null>(null);
-  const [history, setHistory] = useState<ConsultaRow[]>([]);
   const [plans, setPlans] = useState<PlanOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [updatingPlan, setUpdatingPlan] = useState<string | null>(null);
@@ -59,19 +58,12 @@ export default function ProfileScreen() {
       return;
     }
     setLoading(true);
-    const [usageSnapshot, planOptions, historyRes] = await Promise.all([
+    const [usageSnapshot, planOptions] = await Promise.all([
       getUsageSnapshot(session.user.id),
       getPlans(),
-      supabase
-        .from('consultas')
-        .select('id, tipo, placa, dni, created_at, success, resumen')
-        .eq('user_id', session.user.id)
-        .order('created_at', { ascending: false })
-        .limit(20),
     ]);
     setUsage(usageSnapshot);
     setPlans(planOptions);
-    setHistory((historyRes.data as ConsultaRow[] | null) ?? []);
     setSupabaseMissing(false);
     setNoSession(false);
     setLoading(false);
@@ -90,24 +82,32 @@ export default function ProfileScreen() {
   const planName = usage?.plan?.name ?? 'Free';
   const creditText =
     usage?.creditsRemaining != null
-      ? `${usage.creditsRemaining} restantes${
-          usage.validUntil ? ` · vence ${formatExpiry(usage.validUntil)}` : ''
-        }`
+      ? `${usage.creditsRemaining} restantes`
       : 'Créditos ilimitados';
 
   const mappedPlans = useMemo(() => {
-    return plans.map((p) => {
-      return {
-        ...p,
-        tag: p.id === 'free' ? 'Incluido' : p.id === 'pro' ? 'Recomendado' : 'A medida',
-        subtitle: `${p.total_consultas ?? '∞'} consultas · ${
-          p.duration_days ? `${p.duration_days} días` : 'Sin vencimiento'
+    const currentPlanId = usage?.plan?.id;
+    const currentPlan = plans.find((p) => p.id === currentPlanId) ?? plans[0];
+    if (!currentPlan) return [];
+    return [
+      {
+        ...currentPlan,
+        tag:
+          currentPlan.id === 'free'
+            ? 'Incluido'
+            : currentPlan.id === 'pro'
+              ? 'Recomendado'
+              : 'A medida',
+        subtitle: `${currentPlan.total_consultas ?? '∞'} consultas · ${
+          currentPlan.duration_days ? `${currentPlan.duration_days} días` : 'Sin vencimiento'
         }`,
         priceLabel:
-          p.price_pen && Number(p.price_pen) > 0 ? `S/ ${Number(p.price_pen).toFixed(2)}` : 'Gratis',
-      };
-    });
-  }, [plans]);
+          currentPlan.price_pen && Number(currentPlan.price_pen) > 0
+            ? `S/ ${Number(currentPlan.price_pen).toFixed(2)}`
+            : 'Gratis',
+      },
+    ];
+  }, [plans, usage?.plan?.id]);
 
   const onSelectPlan = async (planId: string) => {
     if (!session?.user?.id) return;
@@ -123,22 +123,24 @@ export default function ProfileScreen() {
 
   return (
     <ParallaxScrollView
-      headerBackgroundColor={{ light: '#0A1837', dark: '#0B122A' }}
+      headerBackgroundColor={{ light: palette.surface, dark: palette.surface }}
+      headerHeight={100}
+      
       headerImage={
-        <View style={styles.headerHero}>
-          <View style={styles.headerBadge}>
-            <MaterialIcons name="verified-user" size={24} color={palette.accent} />
+        <View style={[styles.headerHero, { maxWidth: contentMax }]}>
+          <ThemedText style={styles.heroOverline}>Perfil</ThemedText>
+          <View style={styles.headerTitleRow}>
+            <ThemedText type="title" style={styles.headerTitle}>
+              Tu perfil y plan
+            </ThemedText>
+            <View style={styles.headerBadge}>
+              <MaterialIcons name="verified-user" size={24} color={palette.accent} />
+            </View>
           </View>
-          <ThemedText type="title" style={styles.headerTitle}>
-            Tu perfil y plan
-          </ThemedText>
-          <ThemedText style={styles.headerSubtitle}>
-            Consulta tus créditos, cambia de plan y revisa tu historial de consultas guardado en
-            Supabase.
-          </ThemedText>
         </View>
       }>
-      <ThemedView style={styles.card}>
+      <View style={[styles.contentWrap, { maxWidth: contentMax }]}>
+        <ThemedView style={styles.card}>
         <View style={styles.rowBetween}>
           <View>
             <ThemedText style={styles.userName}>{userName}</ThemedText>
@@ -176,12 +178,11 @@ export default function ProfileScreen() {
             )}
           </>
         )}
-      </ThemedView>
+        </ThemedView>
 
-      <ThemedView style={styles.card}>
+        <ThemedView style={styles.card}>
         <View style={styles.rowBetween}>
-          <ThemedText style={styles.sectionTitle}>Planes</ThemedText>
-          <ThemedText style={styles.muted}>Actualiza tus créditos</ThemedText>
+          <ThemedText style={styles.sectionTitle}>Plan Actual</ThemedText>
         </View>
         {loading ? (
           <ActivityIndicator color={palette.primary} />
@@ -196,8 +197,7 @@ export default function ProfileScreen() {
                   styles.planCard,
                   usage?.plan?.id === plan.id && { borderColor: palette.accent },
                 ]}
-                onPress={() => onSelectPlan(plan.id)}
-                disabled={Boolean(updatingPlan)}>
+                onPress={() => router.push('/(tabs)/plans')}>
                 <View style={styles.rowBetween}>
                   <ThemedText style={styles.planName}>{plan.name}</ThemedText>
                   <View style={styles.tinyBadge}>
@@ -206,36 +206,13 @@ export default function ProfileScreen() {
                 </View>
                 <ThemedText style={styles.planSubtitle}>{plan.subtitle}</ThemedText>
                 <ThemedText style={styles.planPrice}>{plan.priceLabel}</ThemedText>
-                <ThemedText style={styles.planAction}>
-                  {updatingPlan === plan.id ? 'Aplicando…' : 'Elegir plan'}
-                </ThemedText>
+                <ThemedText style={styles.planAction}>Cambio de plan</ThemedText>
               </Pressable>
             ))}
           </View>
         )}
-      </ThemedView>
-
-      <ThemedView style={styles.card}>
-        <View style={styles.rowBetween}>
-          <ThemedText style={styles.sectionTitle}>Historial (últimas 20)</ThemedText>
-          <ThemedText style={styles.muted}>Guardado en Supabase</ThemedText>
-        </View>
-        {loading ? (
-          <ActivityIndicator color={palette.primary} />
-        ) : supabaseMissing ? (
-          <ThemedText style={styles.errorText}>Sin conexión a Supabase.</ThemedText>
-        ) : history.length === 0 ? (
-          <ThemedText style={styles.muted}>Aún no hay consultas guardadas.</ThemedText>
-        ) : (
-          <FlatList
-            data={history}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => <HistoryRow item={item} />}
-            scrollEnabled={false}
-            ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
-          />
-        )}
-      </ThemedView>
+        </ThemedView>
+      </View>
     </ParallaxScrollView>
   );
 }
@@ -249,59 +226,52 @@ function Stat({ label, value }: { label: string; value: string | number }) {
   );
 }
 
-function HistoryRow({ item }: { item: ConsultaRow }) {
-  const date = new Date(item.created_at);
-  const label = item.placa ? `Placa ${item.placa}` : item.dni ? `DNI ${item.dni}` : '';
-  return (
-    <View style={styles.historyRow}>
-      <View style={styles.historyIcon}>
-        <MaterialIcons
-          name={item.success === false ? 'error' : 'check-circle'}
-          size={20}
-          color={item.success === false ? '#F05941' : palette.accent}
-        />
-      </View>
-      <View style={{ flex: 1 }}>
-        <ThemedText style={styles.historyTitle}>{item.tipo}</ThemedText>
-        <ThemedText style={styles.historySubtitle}>
-          {item.resumen || label || 'Sin detalle'}
-        </ThemedText>
-        <ThemedText style={styles.historyDate}>{date.toLocaleString()}</ThemedText>
-      </View>
-    </View>
-  );
-}
 
 const styles = StyleSheet.create({
   headerHero: {
     flex: 1,
     padding: 32,
     gap: 10,
+    width: '100%',
+    alignSelf: 'center',
+  },
+  contentWrap: {
+    width: '100%',
+    alignSelf: 'center',
+    gap: 16,
+  },
+  headerTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
   },
   headerBadge: {
-    width: 46,
-    height: 46,
-    borderRadius: 14,
-    backgroundColor: '#0E8BFF22',
     justifyContent: 'center',
     alignItems: 'center',
   },
+  heroOverline: {
+      color: palette.accent,
+      fontSize: 14,
+      letterSpacing: 1,
+      textTransform: 'uppercase',
+      fontFamily: Fonts.rounded,
+    },
   headerTitle: {
     fontFamily: Fonts.rounded,
-    color: '#F8FAFC',
+    color: palette.text,
     maxWidth: 320,
   },
   headerSubtitle: {
-    color: '#CBD5E1',
+    color: palette.subtext,
     maxWidth: 360,
   },
   card: {
     borderRadius: 18,
     padding: 18,
     gap: 12,
-    backgroundColor: palette.surfaceAlt,
-    borderWidth: 1,
-    borderColor: '#162042',
+    backgroundColor: palette.surface,
+    borderWidth: 2,
+    borderColor: palette.border,
   },
   rowBetween: {
     flexDirection: 'row',
@@ -311,10 +281,10 @@ const styles = StyleSheet.create({
   userName: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#F8FAFC',
+    color: palette.text,
   },
   muted: {
-    color: '#94A3B8',
+    color: palette.subtext,
   },
   badge: {
     paddingHorizontal: 10,
@@ -322,13 +292,14 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     borderWidth: 1,
     borderColor: palette.primary,
+    backgroundColor: `${palette.primary}1A`,
   },
   badgeText: {
     color: palette.primary,
     fontWeight: '700',
   },
   statsRow: {
-    flexDirection: 'row',
+    flexDirection: 'column',
     gap: 10,
   },
   statBox: {
@@ -336,12 +307,12 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#162042',
-    backgroundColor: '#0b1328',
+    borderColor: palette.border,
+    backgroundColor: palette.surfaceAlt,
     gap: 4,
   },
   statValue: {
-    color: '#F8FAFC',
+    color: palette.text,
     fontWeight: '700',
     fontSize: 16,
   },
@@ -352,7 +323,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 12,
     borderRadius: 12,
-    backgroundColor: '#0E1931',
+    backgroundColor: palette.primary,
   },
   signOutText: {
     color: '#fff',
@@ -361,7 +332,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#F8FAFC',
+    color: palette.text,
   },
   planList: {
     gap: 10,
@@ -370,12 +341,12 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#162042',
-    backgroundColor: '#0B1426',
+    borderColor: palette.border,
+    backgroundColor: palette.surfaceAlt,
     gap: 6,
   },
   planName: {
-    color: '#F8FAFC',
+    color: palette.text,
     fontWeight: '700',
   },
   tinyBadge: {
@@ -383,57 +354,33 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: '#0E8BFF',
+    borderColor: palette.primary,
+    backgroundColor: `${palette.primary}1A`,
   },
   tinyBadgeText: {
-    color: '#0E8BFF',
+    color: palette.primary,
     fontSize: 12,
     fontWeight: '700',
   },
   planSubtitle: {
-    color: '#CBD5E1',
+    color: palette.subtext,
   },
   planPrice: {
-    color: '#F8FAFC',
+    color: palette.text,
     fontWeight: '700',
-  },
-  planSupport: {
-    color: '#CBD5E1',
   },
   planAction: {
     color: palette.accent,
     fontWeight: '700',
   },
-  historyRow: {
-    flexDirection: 'row',
-    gap: 10,
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#162042',
-    backgroundColor: '#0B1426',
-  },
-  historyIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#0E1931',
-  },
-  historyTitle: {
-    color: '#F8FAFC',
-    fontWeight: '700',
-  },
-  historySubtitle: {
-    color: '#CBD5E1',
-  },
-  historyDate: {
-    color: '#94A3B8',
-    fontSize: 12,
-  },
   errorText: {
-    color: '#F05941',
+    color: palette.danger,
     fontWeight: '700',
   },
 });
+
+
+
+
+
+

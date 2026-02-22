@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 
+import ParallaxScrollView from '@/components/parallax-scroll-view';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Fonts } from '@/constants/theme';
@@ -18,15 +19,25 @@ type ConsultaRow = {
 };
 
 const palette = {
-  primary: '#0E8BFF',
-  accent: '#0CD3A2',
-  danger: '#F05941',
-  surface: '#0B1021',
-  surfaceAlt: '#0F172A',
+  bg: '#F6F8FC',
+  surface: '#FFFFFF',
+  surfaceAlt: '#F3F6FB',
+  border: '#cfc9c9',
+  text: '#0B1220',
+  subtext: '#5B6B84',
+  muted: '#6B7C93',
+  primary: '#1D4ED8',
+  primarySoft: '#EAF1FF',
+  accent: '#16A34A',
+  danger: '#DC2626',
+  warning: '#F59E0B',
+  gold: '#D9A441',
 };
 
 export default function HistoryScreen() {
   const { session } = useAuth();
+  const { width } = useWindowDimensions();
+  const contentMax = Math.min(720, width - 32);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [rows, setRows] = useState<ConsultaRow[]>([]);
@@ -46,7 +57,7 @@ export default function HistoryScreen() {
         .select('id, tipo, placa, dni, created_at, resumen, success')
         .eq('user_id', session.user.id)
         .order('created_at', { ascending: false })
-        .limit(50);
+        .limit(20);
       if (dbError) throw dbError;
       setRows((data as ConsultaRow[]) ?? []);
     } catch (err: any) {
@@ -61,42 +72,48 @@ export default function HistoryScreen() {
   }, [load]);
 
   return (
-    <ThemedView style={styles.screen} lightColor="#050915" darkColor="#050915">
-      <View style={styles.header}>
-        <ThemedText style={styles.overline}>Historial</ThemedText>
-        <ThemedText type="title" style={styles.title}>
-          Consultas recientes
-        </ThemedText>
-        <ThemedText style={styles.subtitle}>
-          Ve tus últimas consultas y revisa rápidamente la placa o DNI ya consultados.
-        </ThemedText>
-      </View>
-
-      <ThemedView style={styles.card}>
-        <View style={styles.cardHeader}>
-          <ThemedText style={styles.cardTitle}>Últimas 50 consultas</ThemedText>
-          <Pressable onPress={load} style={styles.refresh}>
-            <ThemedText style={styles.refreshText}>Actualizar</ThemedText>
-          </Pressable>
+    <ParallaxScrollView
+      headerBackgroundColor={{ light: palette.surface, dark: palette.surface }}
+      headerHeight={150}
+      contentStyle={styles.scrollContent}
+      headerImage={
+        <View style={[styles.headerHero, { maxWidth: contentMax }]}>
+          <ThemedText style={styles.overline}>Historial</ThemedText>
+          <ThemedText type="title" style={styles.title}>
+            Consultas recientes
+          </ThemedText>
+          <ThemedText style={styles.subtitle}>
+            Ve tus últimas consultas y revisa rápidamente la placa o DNI ya consultados.
+          </ThemedText>
         </View>
+      }>
+      <View style={[styles.contentWrap, { maxWidth: contentMax }]}>
+        <ThemedView style={styles.card}>
+          <View style={styles.cardHeader}>
+            <ThemedText style={styles.cardTitle}>Últimas 20 consultas</ThemedText>
+            <Pressable onPress={load} style={styles.refresh}>
+              <ThemedText style={styles.refreshText}>Actualizar</ThemedText>
+            </Pressable>
+          </View>
 
-        {loading ? (
-          <ActivityIndicator color={palette.primary} />
-        ) : error ? (
-          <ThemedText style={styles.errorText}>{error}</ThemedText>
-        ) : rows.length === 0 ? (
-          <ThemedText style={styles.subtitle}>Aún no hay consultas guardadas.</ThemedText>
-        ) : (
-          <FlatList
-            data={rows}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => <HistoryItem item={item} />}
-            ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
-            scrollEnabled={false}
-          />
-        )}
-      </ThemedView>
-    </ThemedView>
+          {loading ? (
+            <ActivityIndicator color={palette.primary} />
+          ) : error ? (
+            <ThemedText style={styles.errorText}>{error}</ThemedText>
+          ) : rows.length === 0 ? (
+            <ThemedText style={styles.subtitle}>Aún no hay consultas guardadas.</ThemedText>
+          ) : (
+            <FlatList
+              data={rows}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => <HistoryItem item={item} />}
+              ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
+              scrollEnabled={false}
+            />
+          )}
+        </ThemedView>
+      </View>
+    </ParallaxScrollView>
   );
 }
 
@@ -111,7 +128,11 @@ function HistoryItem({ item }: { item: ConsultaRow }) {
   return (
     <View style={styles.row}>
       <View style={styles.rowLeft}>
-        <View style={[styles.badge, { borderColor: statusColor }]}>
+        <View
+          style={[
+            styles.badge,
+            { borderColor: statusColor, backgroundColor: `${statusColor}1A` },
+          ]}>
           <ThemedText style={[styles.badgeText, { color: statusColor }]}>{item.tipo}</ThemedText>
         </View>
         <View style={{ flex: 1 }}>
@@ -125,13 +146,22 @@ function HistoryItem({ item }: { item: ConsultaRow }) {
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    padding: 18,
+  scrollContent: {
+    paddingVertical: 18,
+    paddingHorizontal: 30,
     gap: 12,
+    alignItems: 'center',
   },
-  header: {
+  contentWrap: {
+    width: '100%',
+    marginTop: 12,
+  },
+  headerHero: {
+    flex: 1,
+    padding: 32,
     gap: 6,
+    width: '100%',
+    alignSelf: 'center',
   },
   overline: {
     color: palette.accent,
@@ -141,11 +171,14 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.rounded,
   },
   title: {
-    color: '#F8FAFC',
+    color: palette.text,
     fontFamily: Fonts.rounded,
+    fontWeight: '700',
+    maxWidth: 320,
   },
   subtitle: {
-    color: '#CBD5E1',
+    color: palette.subtext,
+    maxWidth: 360,
   },
   card: {
     backgroundColor: palette.surface,
@@ -153,7 +186,7 @@ const styles = StyleSheet.create({
     padding: 14,
     gap: 10,
     borderWidth: 1,
-    borderColor: '#162042',
+    borderColor: palette.border,
   },
   cardHeader: {
     flexDirection: 'row',
@@ -161,7 +194,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   cardTitle: {
-    color: '#F8FAFC',
+    color: palette.text,
     fontWeight: '700',
   },
   refresh: {
@@ -169,7 +202,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#1F2937',
+    borderColor: palette.border,
   },
   refreshText: {
     color: palette.primary,
@@ -183,7 +216,7 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#162042',
+    borderColor: palette.border,
     backgroundColor: palette.surfaceAlt,
   },
   rowLeft: {
@@ -201,14 +234,15 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   label: {
-    color: '#F8FAFC',
+    color: palette.text,
     fontWeight: '700',
   },
   resumen: {
-    color: '#CBD5E1',
+    color: palette.subtext,
   },
   date: {
-    color: '#94A3B8',
+    color: palette.muted,
     fontSize: 12,
   },
 });
+

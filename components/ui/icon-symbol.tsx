@@ -20,6 +20,8 @@ const MAPPING = {
   'chevron.right': 'chevron-right',
   'car.fill': 'directions-car-filled',
   'clock.fill': 'schedule',
+  'person.crop.circle': 'account-circle',
+  'bag.fill': 'local-mall',
 } as IconMapping;
 
 /**

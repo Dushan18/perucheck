@@ -3,6 +3,7 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import { ComponentProps, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useWindowDimensions } from "react-native";
 import {
   ActivityIndicator,
   Alert,
@@ -21,25 +22,22 @@ import { getUsageSnapshot, registerConsulta, type UsageSnapshot } from '@/lib/bi
 import { useAuth } from '@/providers/auth-provider';
 
 const palette = {
-  // Base claro
-  bg: '#F8FAFC',
+  bg: '#F6F8FC',
   surface: '#FFFFFF',
-  surfaceAlt: '#F1F5F9',
-  surfaceSoft: '#EEF2FF',
-  // Bordes / texto
-  border: '#E5E7EB',
-  borderSoft: '#E2E8F0',
-  text: '#0F172A',
-  subtext: '#475569',
-  muted: '#64748B',
-  // Marca
-  primary: '#2563EB',
-  accent: '#0D9488',
-  gold: '#D9A441',
-  warning: '#F6A609',
+  surfaceAlt: '#F3F6FB',
+  border: '#cfc9c9',
+  text: '#0B1220',
+  subtext: '#5B6B84',
+  muted: '#6B7C93',
+  primary: '#1D4ED8',
+  primarySoft: '#EAF1FF',
+  accent: '#16A34A',
   danger: '#DC2626',
-
+  warning: '#F59E0B',
+  gold: '#D9A441',
 };
+
+
 
 const formatExpiry = (iso?: string | null) => {
   if (!iso) return 'Sin vencimiento';
@@ -453,8 +451,10 @@ const personSample = {
 
 function Badge({ label, tone }: { label: string; tone: string }) {
   return (
-    <View style={[styles.badge, { backgroundColor: `${tone}22`, borderColor: tone }]}>
-      <ThemedText style={[styles.badgeText, { color: tone }]}>{label}</ThemedText>
+    <View style={[styles.badge, { backgroundColor: `${tone}22`, borderColor: tone, maxWidth: '100%' }]}>
+      <ThemedText style={[styles.badgeText, { color: tone, flexWrap: 'wrap' }]}>
+        {label}
+      </ThemedText>
     </View>
   );
 }
@@ -875,6 +875,11 @@ function renderItvState(state?: ServiceState, onRefresh?: () => void) {
 }
 
 export default function HomeScreen() {
+  //responsive
+  const { width } = useWindowDimensions();
+  const contentMax = Math.min(280, width - 64);
+
+
   const router = useRouter();
   const { session } = useAuth();
   const [plateInput, setPlateInput] = useState(formatPlate(vehicle.plate));
@@ -962,6 +967,10 @@ export default function HomeScreen() {
 
   const handleAction = (action: string) => {
     Haptics.selectionAsync();
+    if (action === 'paquetes') {
+      router.push('/(tabs)/plans');
+      return;
+    }
     router.push({ pathname: '/modal', params: { action, plate: formattedPlate, scope: 'vehiculo' } });
   };
 
@@ -1097,28 +1106,23 @@ export default function HomeScreen() {
   };
 
   return (
+
     <ParallaxScrollView
-      headerBackgroundColor={{ light: palette.bg, dark: '#07132B' }}
+      headerBackgroundColor={{ light: palette.surface, dark: palette.surface }}
       headerImage={
         <View style={styles.headerHero}>
-          <View style={styles.headerGlow} />
           <Image
             style={styles.heroLogo}
             contentFit="contain"
           />
           <View style={styles.headerCopy}>
             <ThemedText style={styles.heroOverline}>PeruCheck · Reportes</ThemedText>
-            <ThemedText type="title" style={styles.heroTitle}>
+            <ThemedText type="title" style={[styles.heroTitle, { maxWidth: contentMax }]}>
               Reportes móviles de vehículos y personas
             </ThemedText>
-            <ThemedText style={styles.heroSubtitle}>
-              Consulta vehículos y personas con datos oficiales (SUNARP, SAT, SOAT, MTC, REDAM y
-              más) en tu app PeruCheck.
+            <ThemedText style={[styles.heroSubtitle, { maxWidth: contentMax }]}>
+              Consulta vehículos y personas con datos oficiales (SUNARP, SAT, SOAT, MTC, REDAM y más) en tu app PeruCheck.
             </ThemedText>
-            <View style={styles.heroBadges}>
-              <Badge label="Vehicular" tone={palette.accent} />
-              <Badge label="Personas" tone={palette.gold} />
-            </View>
           </View>
         </View>
       }>
@@ -1136,9 +1140,6 @@ export default function HomeScreen() {
               : 'Sin información de créditos'}
         </ThemedText>
         <View style={styles.usageRow}>
-          <ThemedText style={styles.usageMeta}>
-            {usage?.plan ? 'Créditos activos' : 'Sin créditos asignados'}
-          </ThemedText>
           <Pressable style={styles.secondaryButton} onPress={() => handleAction('paquetes')}>
             <ThemedText style={styles.secondaryText}>Comprar paquetes</ThemedText>
           </Pressable>
@@ -1152,12 +1153,12 @@ export default function HomeScreen() {
             <MaterialIcons
               name="directions-car-filled"
               size={20}
-              color={mode === 'vehiculo' ? '#fff' : '#C7D2FE'}
+              color={mode === 'vehiculo' ? '#fff' : '#314158'}
             />
             <ThemedText
               style={[
                 styles.modeText,
-                { color: mode === 'vehiculo' ? '#fff' : '#C7D2FE' },
+                { color: mode === 'vehiculo' ? '#fff' : '#314158' },
               ]}>
               Vehículos
             </ThemedText>
@@ -1168,12 +1169,12 @@ export default function HomeScreen() {
             <MaterialIcons
               name="person"
               size={20}
-              color={mode === 'persona' ? '#fff' : '#C7D2FE'}
+              color={mode === 'persona' ? '#fff' : '#314158'}
             />
             <ThemedText
               style={[
                 styles.modeText,
-                { color: mode === 'persona' ? '#fff' : '#C7D2FE' },
+                { color: mode === 'persona' ? '#fff' : '#314158' },
               ]}>
               Personas
             </ThemedText>
@@ -1194,17 +1195,7 @@ export default function HomeScreen() {
               onSelectPlate={(plate) => setPlateInput(formatPlate(plate))}
             />
             <View style={styles.summaryRow}>
-              <View style={styles.summaryBlock}>
-                <View style={styles.summaryIconBox}>
-                  <MaterialIcons name="directions-car-filled" size={24} color={palette.primary} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <ThemedText style={styles.summaryLabel}>Placa consultada</ThemedText>
-                  <ThemedText style={styles.summaryValue}>
-                    {formattedPlate || vehicle.plate}
-                  </ThemedText>
-                </View>
-              </View>
+
               <Pressable
                 style={[styles.summaryBlock, { backgroundColor: palette.surfaceAlt }]}
                 disabled={!sunarpOwnersCount}
@@ -1217,7 +1208,7 @@ export default function HomeScreen() {
                   <ThemedText
                     style={[
                       styles.summaryValue,
-                      { color: sunarpOwnerSummary ? '#F8FAFC' : palette.muted },
+                      { color: sunarpOwnerSummary ? '#070707' : palette.muted },
                     ]}>
                     {sunarpOwnerSummary || 'Consulta pendiente'}
                   </ThemedText>
@@ -1237,12 +1228,12 @@ export default function HomeScreen() {
 
           <ThemedView style={styles.card}>
             <View style={styles.sectionHeader}>
-              <ThemedText style={styles.sectionTitle}>Entidades y control</ThemedText>
+              <ThemedText style={styles.sectionTitle}>Entidades control</ThemedText>
               <ThemedText style={styles.sectionHint}>
                 SUTRAN, SUNARP, SAT Lima/Callao, SOAT, RT
               </ThemedText>
             </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 4 }}>
+            <View style={{ marginTop: 12 }}>
               {vehicleServices.map((service) => (
                 <Pressable
                   key={service.key}
@@ -1279,19 +1270,12 @@ export default function HomeScreen() {
                         )}
                 </Pressable>
               ))}
-            </ScrollView>
+            </View>
           </ThemedView>
 
         </>
       ) : (
         <>
-          <ThemedView style={styles.card}>
-            <View style={styles.sectionHeader}>
-              <ThemedText style={styles.sectionTitle}>PeruCheck Personas</ThemedText>
-              <Badge label="RENIEC, licencia, REDAM, recompensas" tone={palette.gold} />
-            </View>
-          </ThemedView>
-
           <ThemedView style={styles.card}>
             <PersonInputCard
               value={personaDoc}
@@ -1332,27 +1316,39 @@ export default function HomeScreen() {
         </>
       )}
     </ParallaxScrollView>
+
   );
 }
 
 const styles = StyleSheet.create({
   card: {
     borderRadius: 18,
-    padding: 18,
+    paddingVertical: 18,      // 👈 solo arriba y abajo
+    paddingHorizontal: 10,    // 👈 menos espacio lateral
     gap: 12,
     backgroundColor: palette.surface,
     borderWidth: 1,
     borderColor: palette.border,
+
+    // sombra suave (iOS)
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.06,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+
+    // sombra suave (Android)
+    elevation: 2,
   },
+
   heroTitle: {
-    maxWidth: 280,
+    //maxWidth: 280,
     lineHeight: 34,
     fontFamily: Fonts.rounded,
     color: palette.text,
   },
   heroSubtitle: {
     color: palette.subtext,
-    maxWidth: 360,
+    //maxWidth: 360,
   },
   heroOverline: {
     color: palette.accent,
@@ -1361,21 +1357,13 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     fontFamily: Fonts.rounded,
   },
-  headerGlow: {
-    position: 'absolute',
-    width: 260,
-    height: 260,
-    borderRadius: 130,
-    backgroundColor: `${palette.primary}1A`, // azul suave
-    top: 30,
-    right: -60,
-  },
 
   headerHero: {
     flex: 1,
     padding: 32,
     position: 'relative',
     overflow: 'hidden',
+    backgroundColor: '#ffffff'
   },
 
   heroLogo: {
@@ -1406,38 +1394,42 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
     paddingVertical: 12,
-    borderRadius: 12,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: palette.border,
     backgroundColor: palette.surfaceAlt,
   },
+
   modePillActive: {
-    backgroundColor: `${palette.primary}1A`,
-    borderColor: `${palette.primary}55`,
+    backgroundColor: palette.primary,   // 👈 sólido azul
+    borderColor: palette.primary,
   },
+
   modeText: {
     fontWeight: '700',
     color: palette.text,
   },
 
   inputCard: {
-    gap: 10,
+    gap: 12,
     padding: 14,
-    borderRadius: 14,
-    backgroundColor: palette.surfaceAlt,
+    borderRadius: 16,
+    backgroundColor: palette.surface,
     borderWidth: 1,
-    borderColor: '#162042',
+    borderColor: palette.border,
+  },
+  inputLabel: {
+    color: palette.muted,
+    fontSize: 13,
+    letterSpacing: 0.2,
+    fontWeight: '600',
   },
   inputCardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  inputLabel: {
-    color: '#9CA3AF',
-    fontSize: 13,
-    letterSpacing: 0.4,
-  },
+
   plateBoxes: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1445,28 +1437,29 @@ const styles = StyleSheet.create({
   },
   plateBox: {
     flex: 1,
-    height: 64,
-    borderRadius: 12,
-    backgroundColor: '#0B1426',
+    height: 58,
+    borderRadius: 14,
+    backgroundColor: palette.surface,
     borderWidth: 1,
-    borderColor: '#152544',
+    borderColor: palette.border,
     justifyContent: 'center',
     alignItems: 'center',
   },
   plateBoxText: {
-    color: '#F8FAFC',
-    fontSize: 22,
+    color: palette.text,
+    fontSize: 20,
     fontWeight: '800',
     letterSpacing: 1.2,
   },
+  plateDashText: {
+    color: palette.muted,
+    fontWeight: '800',
+    fontSize: 18,
+  },
+
   plateDash: {
     width: 18,
     alignItems: 'center',
-  },
-  plateDashText: {
-    color: '#9CA3AF',
-    fontWeight: '800',
-    fontSize: 18,
   },
   inputOverlayWrapper: {
     position: 'relative',
@@ -1479,15 +1472,23 @@ const styles = StyleSheet.create({
   primaryButton: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: palette.primary,
-    borderRadius: 12,
+    borderRadius: 14,
+    paddingVertical: 14,
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 6,
+    gap: 8,
+
+    shadowColor: palette.primary,
+    shadowOpacity: 0.18,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 3,
   },
   primaryButtonText: {
     color: '#fff',
-    fontWeight: '700',
+    fontWeight: '800',
+    letterSpacing: 0.2,
   },
   quickChips: {
     flexDirection: 'row',
@@ -1498,17 +1499,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderRadius: 999,
-    backgroundColor: '#0F172A',
+    backgroundColor: palette.surface,
     borderWidth: 1,
-    borderColor: '#111827',
+    borderColor: palette.border,
   },
   chipText: {
-    color: '#E5E7EB',
-    fontWeight: '600',
-    letterSpacing: 0.6,
+    color: palette.text,
+    fontWeight: '700',
+    letterSpacing: 0.2,
   },
   inputHint: {
     color: '#94A3B8',
@@ -1524,10 +1525,11 @@ const styles = StyleSheet.create({
     padding: 14,
     backgroundColor: palette.surfaceAlt,
     borderWidth: 1,
-    borderColor: '#162042',
+    borderColor: palette.border,
     flexDirection: 'row',
     gap: 12,
   },
+
   summaryIconBox: {
     width: 36,
     height: 36,
@@ -1545,11 +1547,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   summaryLabel: {
-    color: '#9CA3AF',
+    color: '#232426',
     fontSize: 13,
   },
   summaryValue: {
-    color: '#E5E7EB',
+    color: palette.text,
     fontSize: 18,
     fontWeight: '700',
   },
@@ -1557,23 +1559,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    flexWrap: 'wrap',     // 👈 clave
+    gap: 10,
   },
   sectionTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#F8FAFC',
+    color: palette.text,
   },
   sectionHint: {
-    color: '#94A3B8',
+    color: palette.subtext,
   },
+  usageMeta: {
+    color: palette.subtext,
+  },
+
   usageRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     marginTop: 6,
-  },
-  usageMeta: {
-    color: '#CBD5E1',
   },
   fieldsGrid: {
     gap: 10,
@@ -1598,20 +1603,22 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 999,
     borderWidth: 1,
+    maxWidth: '100%',
   },
   badgeText: {
     fontSize: 13,
     fontWeight: '700',
+    flexWrap: 'wrap',
   },
   serviceCard: {
-    width: 220,
+    width: '100%',
     padding: 14,
     borderRadius: 14,
-    backgroundColor: palette.surfaceAlt,
+    backgroundColor: palette.surface,
     borderWidth: 1,
-    borderColor: '#162042',
-    marginRight: 12,
+    borderColor: palette.border,
     gap: 8,
+    marginBottom: 14,
   },
   serviceHeader: {
     flexDirection: 'row',
@@ -1620,10 +1627,10 @@ const styles = StyleSheet.create({
   },
   serviceTitle: {
     fontWeight: '700',
-    color: '#E5E7EB',
+    color: palette.text,
   },
   serviceDetail: {
-    color: '#CBD5E1',
+    color: palette.subtext
   },
   serviceFooter: {
     flexDirection: 'row',
@@ -1635,17 +1642,16 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   personGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: 'column',
     gap: 12,
   },
   personCard: {
-    flexBasis: '48%',
+    width: '100%',
     padding: 14,
     borderRadius: 14,
-    backgroundColor: palette.surfaceAlt,
+    backgroundColor: palette.surface,
     borderWidth: 1,
-    borderColor: '#162042',
+    borderColor: palette.border,
     gap: 8,
   },
   personHeader: {
@@ -1654,11 +1660,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   personTitle: {
-    color: '#E5E7EB',
+    color: palette.text,
     fontWeight: '700',
   },
   personDetail: {
-    color: '#CBD5E1',
+    color: palette.subtext,
   },
   personFooter: {
     flexDirection: 'row',
@@ -1730,8 +1736,8 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   soatLine: {
-    color: '#E5E7EB',
-    fontWeight: '600',
+    color: palette.text,
+    fontWeight: '500',
   },
   soatBadges: {
     flexDirection: 'row',
@@ -1739,6 +1745,7 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
   },
   secondaryButton: {
+    width: '55%',
     marginTop: 4,
     paddingVertical: 10,
     borderRadius: 10,

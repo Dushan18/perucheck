@@ -8,38 +8,38 @@ import {
   StyleSheet,
   View,
   Image,
+  useWindowDimensions,
 } from 'react-native';
 
 import * as Linking from 'expo-linking';
 import Constants from 'expo-constants';
 import { maybeCompleteAuthSession, openAuthSessionAsync } from 'expo-web-browser';
-import { Fonts } from '@/constants/theme';
+
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { hasSupabaseConfig, supabase } from '@/lib/supabase';
-//
-import { useWindowDimensions } from 'react-native';
-
 
 maybeCompleteAuthSession();
 
+/** Paleta estilo captura */
 const palette = {
-  bg: '#F8FAFC',          // fondo general
-  card: '#FFFFFF',       // cards principales
-  card2: '#F1F5F9',      // cards secundarias
-  border: '#E5E7EB',     // bordes suaves
-  text: '#0F172A',       // texto principal
-  subtext: '#475569',    // texto secundario
-  muted: '#64748B',
-  primary: '#2563EB',    // azul principal
-  accent: '#0D9488',     // verde confianza
+  bg: '#F6F7FB',
+  card: '#FFFFFF',
+  card2: '#F3F4F6',
+  border: '#E6E8EF',
+  text: '#0B1220',
+  subtext: '#6B7280',
+  muted: '#94A3B8',
+  primary: '#2563EB',
+  accent: '#2563EB',
   danger: '#DC2626',
 };
 
 const getRedirectTo = () => {
   if (Platform.OS === 'web') return Linking.createURL('/');
   const slug = Constants.expoConfig?.slug ?? 'phunter';
-  const owner = Constants.expoConfig?.owner ?? Constants.easConfig?.projectOwner ?? 'anonymous';
+  const owner =
+    Constants.expoConfig?.owner ?? Constants.easConfig?.projectOwner ?? 'anonymous';
   if (Constants.appOwnership === 'expo') return `https://auth.expo.io/@${owner}/${slug}`;
   return Linking.createURL('/');
 };
@@ -47,18 +47,18 @@ const getRedirectTo = () => {
 const getProxyStartUrl = (authUrl: string, returnUrl: string) => {
   if (Platform.OS === 'web' || Constants.appOwnership !== 'expo') return authUrl;
   const slug = Constants.expoConfig?.slug ?? 'phunter';
-  const owner = Constants.expoConfig?.owner ?? Constants.easConfig?.projectOwner ?? 'anonymous';
+  const owner =
+    Constants.expoConfig?.owner ?? Constants.easConfig?.projectOwner ?? 'anonymous';
   const projectFullName = Constants.expoConfig?.originalFullName ?? `@${owner}/${slug}`;
   const params = new URLSearchParams({ authUrl, returnUrl });
   return `https://auth.expo.io/${projectFullName}/start?${params.toString()}`;
 };
 
 export default function LoginScreen() {
-
   const { width } = useWindowDimensions();
-  const isSmall = width < 360;      // celulares pequeños
-  const isLarge = width >= 420;     // celulares grandes
-  
+  const isSmall = width < 360;  // teléfonos pequeños
+  const isLarge = width >= 430; // teléfonos grandes / phablets
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -99,7 +99,8 @@ export default function LoginScreen() {
       const code = url.searchParams.get('code');
       const hashParams = new URLSearchParams(url.hash.replace('#', ''));
       const access_token = url.searchParams.get('access_token') ?? hashParams.get('access_token');
-      const refresh_token = url.searchParams.get('refresh_token') ?? hashParams.get('refresh_token');
+      const refresh_token =
+        url.searchParams.get('refresh_token') ?? hashParams.get('refresh_token');
 
       if (code) {
         const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
@@ -126,28 +127,56 @@ export default function LoginScreen() {
     <ThemedView style={styles.screen} lightColor={palette.bg} darkColor={palette.bg}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView contentContainerStyle={styles.content} bounces={false}>
-          {/* HERO */}
-          <View style={styles.hero}>
-            {/* LOGO + MARCA EN LA MISMA FILA */}
-            <View style={styles.brandRow}>
-              <Image source={require('../assets/images/logo_PeruCheck.png')} style={styles.logoInline} />
-              <ThemedText style={styles.brandTitleInline}>
-                PERUCHECK
-              </ThemedText>
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView
+          contentContainerStyle={[
+            styles.content,
+            isSmall && { paddingHorizontal: 16, paddingTop: 18 },
+            isLarge && { paddingHorizontal: 28, paddingTop: 26 },
+          ]}
+          bounces={false}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* HERO (como la captura) */}
+          <View style={[styles.hero, isSmall && { gap: 10 }, isLarge && { gap: 14 }]}>
+            <ThemedText
+              style={[
+                styles.brandTop,
+                isSmall && { fontSize: 34, letterSpacing: 2.4 },
+                isLarge && { fontSize: 44, letterSpacing: 3.2 },
+              ]}
+            >
+              CIVICAR
+            </ThemedText>
+
+            <View
+              style={[
+                styles.logoCard,
+                isSmall && { width: 76, height: 76, borderRadius: 20 },
+                isLarge && { width: 108, height: 108, borderRadius: 28 },
+              ]}
+            >
+              <Image
+                source={require('../assets/images/logo_PeruCheck.png')}
+                style={[
+                  styles.logoHero,
+                  isSmall && { width: 44, height: 44 },
+                  isLarge && { width: 70, height: 70 },
+                ]}
+              />
             </View>
 
-            {/* TÍTULO PRINCIPAL */}
-            <ThemedText style={styles.title}>
+            <ThemedText
+              style={[
+                styles.title,
+                isSmall && { fontSize: 24, lineHeight: 30 },
+                isLarge && { fontSize: 34, lineHeight: 40 },
+              ]}
+            >
               Entra y consulta{'\n'}al instante
             </ThemedText>
-
-            <ThemedText style={styles.subtitle}>
-              Crea tu cuenta con Google, recibe tus consultas de cortesía y lleva el historial en un solo lugar.
-            </ThemedText>
           </View>
-
 
           {/* CARD GOOGLE */}
           <View style={styles.card}>
@@ -163,36 +192,28 @@ export default function LoginScreen() {
                   Mantendremos tu sesión iniciada y podrás cerrar sesión cuando quieras.
                 </ThemedText>
 
+                {/* Botón Google outline pill */}
                 <Pressable
                   onPress={signInWithGoogle}
                   disabled={loading}
                   style={({ pressed }) => [
-                    styles.primaryButton,
-                    pressed && styles.primaryButtonPressed,
-                    loading && { opacity: 0.85 },
+                    styles.googleBtn,
+                    pressed && { backgroundColor: 'rgba(37,99,235,0.08)' },
+                    loading && { opacity: 0.7 },
                   ]}
                 >
                   {loading ? (
-                    <ActivityIndicator color="#fff" />
+                    <ActivityIndicator color={palette.primary} />
                   ) : (
-                    <View style={styles.googleButtonInner}>
-                      <View style={styles.iconSlot}>
-                        <Image
-                          source={require('../assets/images/logo_google.png')}
-                          style={styles.googleIcon}
-                        />
-                      </View>
-
-                      <ThemedText style={styles.primaryButtonText}>
-                        Continuar con Google
-                      </ThemedText>
-
-                      <View style={styles.iconSlot} />
+                    <View style={styles.googleBtnInner}>
+                      <Image
+                        source={require('../assets/images/google-logo.png')}
+                        style={styles.googleIcon}
+                      />
+                      <ThemedText style={styles.googleBtnText}>Continuar con Google</ThemedText>
                     </View>
                   )}
                 </Pressable>
-
-
               </>
             )}
 
@@ -207,24 +228,9 @@ export default function LoginScreen() {
             <InfoRow text="Créditos de bienvenida listos para usar" />
             <InfoRow text="Historial y descargas en tu perfil" />
           </View>
-
-          {/* BOTTOM CHIPS */}
-          <View style={styles.badgeRowBottom}>
-            <BottomChip label="Sin compartir tu correo" tone={palette.primary} />
-            <BottomChip label="Puedes cerrar sesión cuando quieras" tone={palette.accent} />
-          </View>
         </ScrollView>
       </KeyboardAvoidingView>
     </ThemedView>
-  );
-}
-
-
-function BottomChip({ label, tone }: { label: string; tone: string }) {
-  return (
-    <View style={[styles.bottomChip, { borderColor: tone }]}>
-      <ThemedText style={[styles.bottomChipText, { color: tone }]}>{label}</ThemedText>
-    </View>
   );
 }
 
@@ -241,32 +247,63 @@ function InfoRow({ text }: { text: string }) {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
+
+  // ✅ responsive real: centrado + ancho máximo en pantallas grandes (tablets)
   content: {
+    alignSelf: 'center',
+    width: '100%',
+    maxWidth: 480,
     paddingHorizontal: 22,
-    paddingTop: 26,
+    paddingTop: 50,
     paddingBottom: 28,
     gap: 18,
   },
 
   hero: {
     alignItems: 'center',
-    paddingTop: 12,
-    gap: 10,
+    paddingTop: 60,
+    gap: 12,
   },
 
-  brand: {
-    color: palette.accent,
-    fontSize: 12,
+  brandTop: {
+    fontSize: 45,
+    fontWeight: '900',
     letterSpacing: 2,
-    textTransform: 'uppercase',
+    color: palette.primary,
+    lineHeight: 32,         // 👈 clave
+    includeFontPadding: true, // 👈 importante en Android
+  },
+
+  logoCard: {
+    width: 80,
+    height: 80,
+    borderRadius: 24,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: palette.border,
+
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 3,
+  },
+
+  logoHero: {
+    width: 70,
+    height: 70,
+    resizeMode: 'contain',
   },
 
   title: {
     color: palette.text,
-    fontFamily: Fonts.rounded,
-    fontSize: 34,
-    lineHeight: 40,
+    fontSize: 30,
+    lineHeight: 36,
+    fontWeight: '900',
     textAlign: 'center',
+    marginTop: 4,
   },
 
   subtitle: {
@@ -274,29 +311,28 @@ const styles = StyleSheet.create({
     fontSize: 14.5,
     lineHeight: 22,
     textAlign: 'center',
-    maxWidth: 360,
-    marginTop: 2,
+    maxWidth: 340,
   },
 
   card: {
     backgroundColor: palette.card,
     borderRadius: 18,
     padding: 18,
-    gap: 12,
+    gap: 10,
     borderWidth: 1,
     borderColor: palette.border,
 
-    // SOMBRA
     shadowColor: '#0F172A',
     shadowOpacity: 0.06,
-    shadowRadius: 12,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 10 },
     elevation: 2,
   },
 
   cardTitle: {
     color: palette.text,
-    fontSize: 20,
-    fontWeight: '800',
+    fontSize: 18,
+    fontWeight: '900',
   },
 
   cardSubtitle: {
@@ -304,33 +340,42 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     marginTop: 2,
-    marginBottom: 6,
-    maxWidth: 340,
   },
 
-  primaryButton: {
-    height: 52,
-    borderRadius: 12,
-    backgroundColor: palette.primary,
-    justifyContent: 'center',
+  googleBtn: {
+    height: 54,
+    borderRadius: 999,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 2,
+    borderColor: palette.primary,
     alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 10,
+    overflow: 'hidden',
   },
 
-  primaryButtonPressed: {
-    backgroundColor: '#1D4ED8', // azul más oscuro
-    transform: [{ scale: 0.98 }],
+  googleBtnInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
 
-  primaryButtonText: {
-    color: '#fff',
+  googleIcon: {
+    width: 25,
+    height: 25,
+    resizeMode: 'contain',
+  },
+
+  googleBtnText: {
+    color: palette.primary,
     fontWeight: '900',
-    letterSpacing: 0.2,
+    fontSize: 16,
   },
 
   errorText: {
     color: palette.danger,
     fontWeight: '800',
-    marginTop: 6,
+    marginTop: 8,
   },
 
   cardInfo: {
@@ -340,16 +385,17 @@ const styles = StyleSheet.create({
     gap: 12,
     borderWidth: 1,
     borderColor: palette.border,
-    // SOMBRA
+
     shadowColor: '#0F172A',
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
+    shadowOpacity: 0.05,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 10 },
     elevation: 2,
   },
 
   infoTitle: {
     color: palette.text,
-    fontWeight: '800',
+    fontWeight: '900',
     fontSize: 18,
   },
 
@@ -364,13 +410,13 @@ const styles = StyleSheet.create({
     height: 22,
     borderRadius: 999,
     borderWidth: 2,
-    borderColor: palette.accent,
+    borderColor: palette.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
 
   checkMark: {
-    color: palette.accent,
+    color: palette.primary,
     fontWeight: '900',
     marginTop: -1,
   },
@@ -379,80 +425,4 @@ const styles = StyleSheet.create({
     color: palette.subtext,
     fontSize: 14,
   },
-
-  badgeRowBottom: {
-    flexDirection: 'row',
-    gap: 14,
-    justifyContent: 'space-between',
-    marginTop: 6,
-  },
-
-  bottomChip: {
-    flex: 1,
-    height: 46,
-    borderRadius: 12,
-    borderWidth: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-
-
-  bottomChipText: {
-    fontSize: 13,
-    fontWeight: '800',
-    textAlign: 'center',
-    paddingHorizontal: 8,
-  },
-
-  logo: {
-    width: 64,
-    height: 64,
-    marginBottom: 6,
-  },
-
-  brandTitle: {
-    fontSize: 20,
-    fontWeight: '900',
-    letterSpacing: 2,
-    color: palette.accent,
-    marginBottom: 6,
-  },
-
-  brandRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: 8,
-  },
-
-  logoInline: {
-    width: 36,
-    height: 36,
-    resizeMode: 'contain',
-  },
-  brandTitleInline: {
-    fontSize: 20,
-    fontWeight: '900',
-    letterSpacing: 2,
-    color: palette.accent,
-    marginTop: -1,
-  },
-
-  googleButtonInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: '100%',
-  },
-
-  iconSlot: {
-    width: 40,        // mismo ancho a izquierda y derecha
-    alignItems: 'center',
-  },
-  googleIcon: {
-    width: 60,
-    height: 60,
-    resizeMode: 'contain',
-  },
-
 });
