@@ -7,6 +7,7 @@ import { useWindowDimensions } from "react-native";
 import {
   ActivityIndicator,
   Alert,
+  Keyboard,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -103,6 +104,14 @@ type SunarpData = {
   captchaDetectado?: string;
   captchaValido?: boolean;
   imagenResultado?: string;
+};
+
+type OwnerLookupState = {
+  loading: boolean;
+  type: 'persona' | 'empresa' | null;
+  data: any | null;
+  error: string | null;
+  query: string | null;
 };
 
 const parseDate = (input?: string | null) => {
@@ -339,6 +348,47 @@ const parseRedam = (raw: string, full?: any) => {
   };
 };
 
+const normalizeOwnerName = (name: string) =>
+  name
+    .replace(/\(.*?\)/g, ' ')
+    .replace(/[.,]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const COMPANY_TOKENS = [
+  'SAC',
+  'SRL',
+  'EIRL',
+  'SAA',
+  'SA',
+  'SOCIEDAD',
+  'EMPRESA',
+  'CORPORACION',
+  'COMPANIA',
+  'CIA',
+  'COOPERATIVA',
+  'ASOCIACION',
+  'FUNDACION',
+];
+
+const isCompanyName = (name: string) => {
+  const normalized = normalizeOwnerName(name).toUpperCase().replace(/Ñ/g, 'N');
+  return COMPANY_TOKENS.some((token) =>
+    new RegExp(`\\b${token}\\b`, 'i').test(normalized)
+  );
+};
+
+const splitPersonName = (name: string) => {
+  const normalized = normalizeOwnerName(name).toUpperCase();
+  const parts = normalized.split(' ').filter(Boolean);
+  if (parts.length < 3) return null;
+  return {
+    apellido_paterno: parts[0],
+    apellido_materno: parts[1],
+    nombres: parts.slice(2).join(' '),
+  };
+};
+
 const apiBase = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:8000';
 
 const serviceConfigs: Record<
@@ -526,22 +576,12 @@ function PlateInputCard({
         />
       </View>
 
-      <Pressable style={styles.primaryButton} onPress={onSubmit}>
+      <Pressable
+        style={({ pressed }) => [styles.primaryButton, pressed && styles.primaryButtonPressed]}
+        onPress={onSubmit}>
         <MaterialIcons name="search" size={22} color="#fff" />
         <ThemedText style={styles.primaryButtonText}>Consultar</ThemedText>
       </Pressable>
-
-      <View style={styles.quickChips}>
-        {['ABC-123', 'D4K-231', 'VAN-905'].map((plate) => (
-          <Pressable key={plate} style={styles.chip} onPress={() => onSelectPlate(plate)}>
-            <MaterialIcons name="local-offer" size={14} color={palette.primary} />
-            <ThemedText style={styles.chipText}>{plate}</ThemedText>
-          </Pressable>
-        ))}
-      </View>
-      <ThemedText style={styles.inputHint}>
-        Se autocompleta el guion. Escribe o pega la placa y pulsa consultar.
-      </ThemedText>
     </View>
   );
 }
@@ -591,7 +631,9 @@ function PersonInputCard({
         />
       </View>
 
-      <Pressable style={styles.primaryButton} onPress={onSubmit}>
+      <Pressable
+        style={({ pressed }) => [styles.primaryButton, pressed && styles.primaryButtonPressed]}
+        onPress={onSubmit}>
         <MaterialIcons name="search" size={22} color="#fff" />
         <ThemedText style={styles.primaryButtonText}>Consultar</ThemedText>
       </Pressable>
@@ -898,27 +940,89 @@ export default function HomeScreen() {
     (sunarpData?.coincidencias && sunarpData.coincidencias.length > 0
       ? sunarpData.coincidencias
       : sunarpData?.propietarios) || [];
-  const sunarpOwnersCount = sunarpOwnersBase.length;
-  const sunarpOwnerSummary = sunarpOwnersBase
-    .map((owner) => {
-      const name = owner.nombre?.trim();
-      const doc = owner.documento?.trim();
-      if (name && doc) return `${name} (${doc})`;
-      return name || doc || null;
-    })
-    .filter(Boolean)
-    .slice(0, 2)
-    .join(' · ');
-  const sunarpOwnerLines = sunarpOwnersBase
-    .map((owner) => {
-      const name = owner.nombre?.trim();
-      const doc = owner.documento?.trim();
-      if (name && doc) return `${name} (${doc})`;
-      return name || doc || null;
-    })
-    .filter(Boolean);
+  const sunarpFallbackOwner =
+    sunarpOwnersBase.length === 0
+      ? [
+          sunarpData?.propietarioUsado?.trim(),
+          sunarpData?.dniPropietario?.trim() &&
+            `(${sunarpData?.dniPropietario?.trim()})`,
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .trim()
+      : '';
+  const sunarpOwnerLines = (
+    sunarpOwnersBase.length
+      ? sunarpOwnersBase
+          .map((owner) => {
+            const name = owner.nombre?.trim();
+            const doc = owner.documento?.trim();
+            if (name && doc) return `${name} (${doc})`;
+            return name || doc || null;
+          })
+          .filter(Boolean)
+      : sunarpFallbackOwner
+        ? [sunarpFallbackOwner]
+        : []
+  ) as string[];
+  const sunarpOwnersCount = sunarpOwnerLines.length;
+  const sunarpOwnerSummary = sunarpOwnerLines.slice(0, 2).join(' · ');
+  const [ownerLookup, setOwnerLookup] = useState<OwnerLookupState>({
+    loading: false,
+    type: null,
+    data: null,
+    error: null,
+    query: null,
+  });
+  const sunarpPrimaryOwner = sunarpOwnersBase[0];
+  const sunarpPrimaryName =
+    sunarpPrimaryOwner?.nombre?.trim() ||
+    sunarpPrimaryOwner?.documento?.trim() ||
+    sunarpFallbackOwner ||
+    '';
+  const sunarpPrimaryNameRaw = sunarpPrimaryOwner?.nombre?.trim() || '';
+  const ownerNameClean = useMemo(
+    () => normalizeOwnerName(sunarpPrimaryName),
+    [sunarpPrimaryName]
+  );
+  const ownerType = ownerNameClean
+    ? isCompanyName(ownerNameClean)
+      ? 'empresa'
+      : 'persona'
+    : null;
+  const ownerDisplayType = ownerLookup.type ?? ownerType;
+  const ownerLookupTitle =
+    ownerDisplayType === 'empresa'
+      ? 'RUC'
+      : ownerDisplayType === 'persona'
+        ? 'DNI'
+        : 'Propietario';
+  const ownerLookupPrimary = ownerLookup.loading
+    ? 'Consultando...'
+    : ownerLookup.error
+      ? ownerLookup.error
+      : ownerDisplayType === 'empresa'
+        ? ownerLookup.data?.ruc || 'Sin resultados'
+        : ownerDisplayType === 'persona'
+          ? ownerLookup.data?.dni || 'Sin resultados'
+          : 'Consulta pendiente';
   const [usage, setUsage] = useState<UsageSnapshot | null>(null);
   const [usageLoading, setUsageLoading] = useState(false);
+
+  const resetServiceStateForScope = useCallback(
+    (scope: 'vehiculo' | 'persona') => {
+      setServiceState((prev) => {
+        const next = { ...prev };
+        Object.keys(serviceConfigs).forEach((key) => {
+          if (serviceConfigs[key]?.scope === scope) {
+            next[key] = { loading: false, data: null, parsed: null, error: null, query: undefined };
+          }
+        });
+        return next;
+      });
+    },
+    []
+  );
 
   const refreshUsage = useCallback(async () => {
     if (!session?.user?.id) return;
@@ -934,6 +1038,124 @@ export default function HomeScreen() {
   useEffect(() => {
     refreshUsage();
   }, [refreshUsage]);
+
+  useEffect(() => {
+    if (!ownerNameClean) {
+      setOwnerLookup({ loading: false, type: null, data: null, error: null, query: null });
+      return;
+    }
+    const queryKey = `ambos:${ownerNameClean}`;
+    let shouldFetch = true;
+    setOwnerLookup((prev) => {
+      if (prev.query === queryKey && (prev.data || prev.error) && !prev.loading) {
+        shouldFetch = false;
+        return prev;
+      }
+      return { loading: true, type: null, data: null, error: null, query: queryKey };
+    });
+    if (!shouldFetch) return;
+    const controller = new AbortController();
+    const run = async () => {
+      try {
+        const tryNames = [
+          sunarpPrimaryNameRaw,
+          ownerNameClean,
+        ].filter((n, idx, arr) => n && arr.indexOf(n) === idx);
+        const nombresSplit = splitPersonName(ownerNameClean);
+
+        const sunatPromise = (async () => {
+          for (const nombre of tryNames) {
+            const res = await fetch(`${apiBase}/consulta-sunat-ruc-nombre`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ nombre }),
+              signal: controller.signal,
+            });
+            if (!res.ok) {
+              const text = await res.text();
+              throw new Error(`Error ${res.status}: ${text || 'sin detalle'}`);
+            }
+            const json = await res.json();
+            const result = Array.isArray(json?.resultados) ? json.resultados[0] : null;
+            if (result) return result;
+          }
+          return null;
+        })();
+
+        const dniPromise = (async () => {
+          if (!nombresSplit) return null;
+          const res = await fetch(`${apiBase}/consulta-dni-nombres`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(nombresSplit),
+            signal: controller.signal,
+          });
+          if (!res.ok) {
+            const text = await res.text();
+            throw new Error(`Error ${res.status}: ${text || 'sin detalle'}`);
+          }
+          const json = await res.json();
+          return Array.isArray(json?.resultados) ? json.resultados[0] : null;
+        })();
+
+        const [sunatResult, dniResult] = await Promise.all([sunatPromise, dniPromise]);
+
+        if (sunatResult) {
+          setOwnerLookup({
+            loading: false,
+            type: 'empresa',
+            data: {
+              ruc: sunatResult?.ruc,
+              razon_social: sunatResult?.razon_social,
+              ubicacion: sunatResult?.ubicacion,
+              estado: sunatResult?.estado,
+            },
+            error: null,
+            query: queryKey,
+          });
+          return;
+        }
+
+        if (dniResult) {
+          setOwnerLookup({
+            loading: false,
+            type: 'persona',
+            data: {
+              dni: dniResult?.dni,
+              ap_paterno: dniResult?.ap_paterno,
+              ap_materno: dniResult?.ap_materno,
+              nombres: dniResult?.nombres,
+              fecha_nacimiento: dniResult?.fecha_nacimiento,
+              ubigeo_domicilio: dniResult?.ubigeo_domicilio,
+              direccion: dniResult?.direccion,
+            },
+            error: null,
+            query: queryKey,
+          });
+          return;
+        }
+
+        setOwnerLookup({
+          loading: false,
+          type: null,
+          data: null,
+          error: 'Sin resultados por nombres.',
+          query: queryKey,
+        });
+      } catch (err: any) {
+        if (err?.name === 'AbortError') return;
+        setOwnerLookup({
+          loading: false,
+          type: null,
+          data: null,
+          error: err?.message ?? 'Error consultando.',
+          query: queryKey,
+        });
+      }
+    };
+    run();
+    return () => controller.abort();
+  }, [ownerNameClean, sunarpPrimaryNameRaw]);
 
   const hasCredits = useCallback(() => {
     if (!usage) return true;
@@ -956,6 +1178,10 @@ export default function HomeScreen() {
       return;
     }
     if (!guardCredits()) return;
+    Keyboard.dismiss();
+    setShowOwnerDetails(false);
+    setOwnerLookup({ loading: false, type: null, data: null, error: null, query: null });
+    resetServiceStateForScope('vehiculo');
     Haptics.selectionAsync();
     fetchAllVehicleServices();
   };
@@ -1016,14 +1242,19 @@ export default function HomeScreen() {
     let parsed: any = null;
     let success = false;
     let errorMessage: string | null = null;
+    let requestPayload: Record<string, any> = { [config.field]: queryValue };
 
     setService(key, { loading: true, error: null, query: queryValue });
     Haptics.selectionAsync();
     try {
+      requestPayload = {
+        [config.field]: queryValue,
+        ...(key === 'sunarp' ? { extraer_propietarios: true } : {}),
+      };
       const res = await fetch(config.endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ [config.field]: queryValue }),
+        body: JSON.stringify(requestPayload),
       });
       if (!res.ok) {
         const text = await res.text();
@@ -1060,7 +1291,7 @@ export default function HomeScreen() {
           serviceKey: key,
           placa: config.field === 'placa' ? queryValue : null,
           dni: config.field === 'dni' ? queryValue : null,
-          payload: { [config.field]: queryValue },
+          payload: requestPayload,
           respuesta: data,
           resumen:
             config.field === 'placa'
@@ -1101,6 +1332,8 @@ export default function HomeScreen() {
       return;
     }
     if (!guardCredits()) return;
+    Keyboard.dismiss();
+    resetServiceStateForScope('persona');
     Haptics.selectionAsync();
     fetchAllPersonServices();
   };
@@ -1116,7 +1349,7 @@ export default function HomeScreen() {
             contentFit="contain"
           />
           <View style={styles.headerCopy}>
-            <ThemedText style={styles.heroOverline}>PeruCheck · Reportes</ThemedText>
+            <ThemedText style={styles.heroOverline}>CIVICAR · Reportes</ThemedText>
             <ThemedText type="title" style={[styles.heroTitle, { maxWidth: contentMax }]}>
               Reportes móviles de vehículos y personas
             </ThemedText>
@@ -1180,9 +1413,6 @@ export default function HomeScreen() {
             </ThemedText>
           </Pressable>
         </View>
-        <ThemedText style={styles.sectionHint}>
-          Elige qué consultar y recibe resultados específicos.
-        </ThemedText>
       </ThemedView>
 
       {mode === 'vehiculo' ? (
@@ -1223,6 +1453,34 @@ export default function HomeScreen() {
                   ) : null}
                 </View>
               </Pressable>
+              <View style={[styles.summaryBlock, { backgroundColor: palette.surfaceAlt }]}>
+                <View style={styles.summaryIconBox}>
+                  <MaterialIcons
+                    name={
+                      ownerType === 'empresa'
+                        ? 'business'
+                        : ownerType === 'persona'
+                          ? 'person'
+                          : 'info'
+                    }
+                    size={20}
+                    color={palette.primary}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <ThemedText style={styles.summaryLabel}>{ownerLookupTitle}</ThemedText>
+                  <ThemedText
+                    style={[
+                      styles.summaryValue,
+                      { color: ownerLookupPrimary ? '#070707' : palette.muted },
+                    ]}>
+                  {ownerLookupPrimary}
+                </ThemedText>
+                {ownerLookup.loading ? (
+                  <ActivityIndicator color={palette.primary} style={{ marginTop: 4 }} />
+                ) : null}
+              </View>
+            </View>
             </View>
           </ThemedView>
 
@@ -1485,6 +1743,13 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 10 },
     elevation: 3,
   },
+  primaryButtonPressed: {
+    transform: [{ scale: 0.98 }],
+    shadowOpacity: 0.32,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 6,
+  },
   primaryButtonText: {
     color: '#fff',
     fontWeight: '800',
@@ -1516,7 +1781,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   summaryRow: {
-    flexDirection: 'row',
+    flexDirection: 'column',
     gap: 12,
   },
   summaryBlock: {

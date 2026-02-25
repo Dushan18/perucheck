@@ -86,10 +86,11 @@ export function AuthGate({ children }: PropsWithChildren) {
   const { session, loading } = useAuth();
   const segments = useSegments();
   const router = useRouter();
+  const publicRoutes = new Set(['login', 'ta']);
 
   useEffect(() => {
     if (loading) return;
-    const inAuthRoute = segments[0] === 'login';
+    const inAuthRoute = !!segments[0] && publicRoutes.has(segments[0]);
     if (session && inAuthRoute) {
       router.replace('/');
     }
