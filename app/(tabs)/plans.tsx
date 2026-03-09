@@ -1,11 +1,27 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Platform,
+  Pressable,
+  StyleSheet,
+  View,
+  useWindowDimensions,
+} from 'react-native';
+import * as Linking from 'expo-linking';
+import { openAuthSessionAsync } from 'expo-web-browser';
 
 import ParallaxScrollView from '@/components/parallax-scroll-view';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Fonts } from '@/constants/theme';
-import { getPlans, changePlan, getUsageSnapshot, type PlanOption, type UsageSnapshot } from '@/lib/billing';
+import {
+  getPlans,
+  changePlan,
+  createPaymentPreference,
+  getUsageSnapshot,
+  type PlanOption,
+  type UsageSnapshot,
+} from '@/lib/billing';
 import { useAuth } from '@/providers/auth-provider';
 import { supabase } from '@/lib/supabase';
 
@@ -33,6 +49,7 @@ export default function PlansScreen() {
   const [usage, setUsage] = useState<UsageSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -75,13 +92,30 @@ export default function PlansScreen() {
     return mapped;
   }, [plans, usage?.plan?.id]);
 
-  const onSelectPlan = async (planId: string) => {
+  const onSelectPlan = async (plan: PlanOption) => {
     if (!session?.user?.id) return;
-    setUpdating(planId);
+    setError(null);
+    setUpdating(plan.id);
     try {
-      await changePlan(session.user.id, planId);
+      const price = Number(plan.price_pen ?? 0);
+      if (!price || price <= 0) {
+        await changePlan(session.user.id, plan.id);
+        const snapshot = await getUsageSnapshot(session.user.id);
+        setUsage(snapshot);
+        return;
+      }
+
+      const returnUrl = Linking.createURL('/(tabs)/plans');
+      const pref = await createPaymentPreference(plan.id, returnUrl);
+      if (Platform.OS === 'web') {
+        await Linking.openURL(pref.initPoint);
+      } else {
+        await openAuthSessionAsync(pref.initPoint, returnUrl);
+      }
       const snapshot = await getUsageSnapshot(session.user.id);
       setUsage(snapshot);
+    } catch (err: any) {
+      setError(err?.message ?? 'No se pudo iniciar el pago.');
     } finally {
       setUpdating(null);
     }
@@ -121,7 +155,7 @@ export default function PlansScreen() {
                       backgroundColor: palette.surface,
                     },
                   ]}
-                  onPress={() => onSelectPlan(plan.id)}
+                  onPress={() => onSelectPlan(plan)}
                   disabled={Boolean(updating) || usage?.plan?.id === plan.id}>
                   <View style={styles.planHeader}>
                     <ThemedText style={styles.planName}>{plan.name}</ThemedText>
@@ -143,6 +177,7 @@ export default function PlansScreen() {
             </View>
           )}
         </ThemedView>
+        {error ? <ThemedText style={styles.errorText}>{error}</ThemedText> : null}
       </View>
     </ParallaxScrollView>
   );
@@ -241,6 +276,10 @@ const styles = StyleSheet.create({
   },
   planAction: {
     color: palette.accent,
+    fontWeight: '700',
+  },
+  errorText: {
+    color: palette.danger,
     fontWeight: '700',
   },
 });

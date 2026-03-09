@@ -96,11 +96,14 @@ export async function changePlan(userId: string, planId: string) {
   if (!supabase || !userId) return;
   const { data: plan } = await supabase
     .from('plans')
-    .select('id, total_consultas, duration_days')
+    .select('id, total_consultas, duration_days, price_pen')
     .eq('id', planId)
     .maybeSingle();
 
   if (!plan) return;
+  if (Number(plan.price_pen ?? 0) > 0) {
+    throw new Error('Este plan requiere pago. Usa Mercado Pago.');
+  }
 
   const duration = typeof plan.duration_days === 'number' ? plan.duration_days : 30;
   const validUntil = new Date();
@@ -113,6 +116,44 @@ export async function changePlan(userId: string, planId: string) {
     consultas_usadas: 0,
     valid_until: validUntil.toISOString(),
   });
+}
+
+export type PaymentPreference = {
+  initPoint: string;
+  preferenceId?: string | null;
+  sandbox?: boolean;
+};
+
+export async function createPaymentPreference(planId: string, returnUrl: string) {
+  if (!supabase) {
+    throw new Error('Supabase no configurado');
+  }
+
+  const { data, error } = await supabase.functions.invoke('mp-create-preference', {
+    body: { planId, returnUrl },
+  });
+
+  if (error) {
+    const anyError = error as any;
+    const contextBody = anyError?.context?.body;
+    let message = error.message || 'No se pudo iniciar el pago';
+    if (contextBody) {
+      try {
+        const parsed = typeof contextBody === 'string' ? JSON.parse(contextBody) : contextBody;
+        message = parsed?.error || parsed?.message || message;
+      } catch {
+        message = typeof contextBody === 'string' ? contextBody : message;
+      }
+    }
+    throw new Error(message);
+  }
+
+  const pref = data as PaymentPreference | null;
+  if (!pref?.initPoint) {
+    throw new Error('No se pudo iniciar el pago');
+  }
+
+  return pref;
 }
 
 export async function getUsageSnapshot(userId?: string): Promise<UsageSnapshot> {

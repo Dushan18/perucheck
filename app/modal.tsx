@@ -1,8 +1,16 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import * as Linking from 'expo-linking';
+import { openAuthSessionAsync } from 'expo-web-browser';
 
-import { getPlans, changePlan, getUsageSnapshot, type PlanOption } from '@/lib/billing';
+import {
+  getPlans,
+  changePlan,
+  createPaymentPreference,
+  getUsageSnapshot,
+  type PlanOption,
+} from '@/lib/billing';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useAuth } from '@/providers/auth-provider';
@@ -22,6 +30,7 @@ export default function ModalScreen() {
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState<string | null>(null);
   const [usage, setUsage] = useState<{ planName?: string; remaining?: string }>({});
+  const [error, setError] = useState<string | null>(null);
 
   const isPaquetes = action === 'paquetes';
 
@@ -61,11 +70,23 @@ export default function ModalScreen() {
     });
   }, [plans]);
 
-  const onSelectPlan = async (planId: string) => {
+  const onSelectPlan = async (plan: PlanOption) => {
     if (!session?.user?.id || !supabase) return;
-    setUpdating(planId);
+    setError(null);
+    setUpdating(plan.id);
     try {
-      await changePlan(session.user.id, planId);
+      const price = Number(plan.price_pen ?? 0);
+      if (!price || price <= 0) {
+        await changePlan(session.user.id, plan.id);
+      } else {
+        const returnUrl = Linking.createURL('/modal');
+        const pref = await createPaymentPreference(plan.id, returnUrl);
+        if (Platform.OS === 'web') {
+          await Linking.openURL(pref.initPoint);
+        } else {
+          await openAuthSessionAsync(pref.initPoint, returnUrl);
+        }
+      }
       const snapshot = await getUsageSnapshot(session.user.id);
       setUsage({
         planName: snapshot.plan?.name ?? 'Free',
@@ -76,6 +97,8 @@ export default function ModalScreen() {
               }`
             : 'Uso ilimitado',
       });
+    } catch (err: any) {
+      setError(err?.message ?? 'No se pudo iniciar el pago.');
     } finally {
       setUpdating(null);
     }
@@ -113,7 +136,7 @@ export default function ModalScreen() {
               <Pressable
                 key={plan.id}
                 style={styles.planCard}
-                onPress={() => onSelectPlan(plan.id)}
+                onPress={() => onSelectPlan(plan)}
                 disabled={Boolean(updating)}>
                 <View style={styles.planHeader}>
                   <ThemedText style={styles.planName}>{plan.name}</ThemedText>
@@ -141,6 +164,7 @@ export default function ModalScreen() {
             se descuentan de tus créditos activos automáticamente.
           </ThemedText>
         </View>
+        {error ? <ThemedText style={styles.errorText}>{error}</ThemedText> : null}
 
         <Pressable onPress={() => router.back()} style={styles.linkButton}>
           <ThemedText type="link">Volver</ThemedText>
@@ -237,6 +261,11 @@ const styles = StyleSheet.create({
   },
   helperText: {
     color: '#CBD5E1',
+  },
+  errorText: {
+    color: '#F87171',
+    fontWeight: '700',
+    textAlign: 'center',
   },
   linkButton: {
     alignSelf: 'center',
