@@ -281,7 +281,12 @@ const parseSunarp = (raw: string, full?: any): SunarpData | null => {
     : undefined;
   const captchaDetectado = datos?.captcha_detectado || full?.captcha_detectado;
   const captchaValido = datos?.captcha_valido ?? full?.captcha_valido;
-  const imagenResultado = datos?.imagen_resultado_src || full?.imagen_resultado_src || '';
+  const imagenResultado =
+    datos?.imagen_resultado_src ||
+    datos?.imagen_resultado ||
+    full?.imagen_resultado_src ||
+    full?.imagen_resultado ||
+    '';
 
   if (!propietarios.length && !coincidencias.length && !(placa || vin || partida || oficina)) {
     return null;
@@ -400,7 +405,7 @@ const serviceConfigs: Record<
   satlima: { endpoint: `${apiBase}/consulta-sat`, field: 'placa', scope: 'vehiculo' },
   satcallao: { endpoint: `${apiBase}/consulta-sat-callao`, field: 'placa', scope: 'vehiculo' },
   sutran: { endpoint: `${apiBase}/consulta-sutran`, field: 'placa', scope: 'vehiculo' },
-  sunarp: { endpoint: `${apiBase}/consulta-vehicular`, parser: parseSunarp, field: 'placa', scope: 'vehiculo' },
+  sunarp: { endpoint: `${apiBase}/consulta-vehicular-async`, parser: parseSunarp, field: 'placa', scope: 'vehiculo' },
   licencia: { endpoint: `${apiBase}/consulta-licencia-dni`, parser: parseLicencia, field: 'dni', scope: 'persona' },
   dniperu: { endpoint: `${apiBase}/consulta-dni-peru`, parser: parseDniPeru, field: 'dni', scope: 'persona' },
   redam: { endpoint: `${apiBase}/consulta-redam-dni`, parser: parseRedam, field: 'dni', scope: 'persona' },
@@ -1064,6 +1069,7 @@ export default function HomeScreen() {
         const nombresSplit = splitPersonName(ownerNameClean);
 
         const sunatPromise = (async () => {
+          let lastError: string | null = null;
           for (const nombre of tryNames) {
             const res = await fetch(`${apiBase}/consulta-sunat-ruc-nombre`, {
               method: 'POST',
@@ -1072,18 +1078,20 @@ export default function HomeScreen() {
               signal: controller.signal,
             });
             if (!res.ok) {
-              const text = await res.text();
-              throw new Error(`Error ${res.status}: ${text || 'sin detalle'}`);
+              const text = await res.text().catch(() => '');
+              console.warn('consulta-sunat-ruc-nombre error', res.status, text?.slice(0, 120));
+              lastError = `Error ${res.status}`;
+              continue;
             }
             const json = await res.json();
             const result = Array.isArray(json?.resultados) ? json.resultados[0] : null;
-            if (result) return result;
+            if (result) return { result, error: null };
           }
-          return null;
+          return { result: null, error: lastError };
         })();
 
         const dniPromise = (async () => {
-          if (!nombresSplit) return null;
+          if (!nombresSplit) return { result: null, error: null };
           const res = await fetch(`${apiBase}/consulta-dni-nombres`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1091,14 +1099,19 @@ export default function HomeScreen() {
             signal: controller.signal,
           });
           if (!res.ok) {
-            const text = await res.text();
-            throw new Error(`Error ${res.status}: ${text || 'sin detalle'}`);
+            const text = await res.text().catch(() => '');
+            console.warn('consulta-dni-nombres error', res.status, text?.slice(0, 120));
+            return { result: null, error: `Error ${res.status}` };
           }
           const json = await res.json();
-          return Array.isArray(json?.resultados) ? json.resultados[0] : null;
+          const result = Array.isArray(json?.resultados) ? json.resultados[0] : null;
+          return { result, error: null };
         })();
 
-        const [sunatResult, dniResult] = await Promise.all([sunatPromise, dniPromise]);
+        const [sunatResponse, dniResponse] = await Promise.all([sunatPromise, dniPromise]);
+        const sunatResult = sunatResponse?.result ?? null;
+        const dniResult = dniResponse?.result ?? null;
+        const lookupError = sunatResponse?.error || dniResponse?.error;
 
         if (sunatResult) {
           setOwnerLookup({
@@ -1139,7 +1152,9 @@ export default function HomeScreen() {
           loading: false,
           type: null,
           data: null,
-          error: 'Sin resultados por nombres.',
+          error: lookupError
+            ? 'Servicios de búsqueda temporalmente no disponibles.'
+            : 'Sin resultados por nombres.',
           query: queryKey,
         });
       } catch (err: any) {
@@ -1148,7 +1163,7 @@ export default function HomeScreen() {
           loading: false,
           type: null,
           data: null,
-          error: err?.message ?? 'Error consultando.',
+          error: 'Servicios de búsqueda temporalmente no disponibles.',
           query: queryKey,
         });
       }
@@ -1207,6 +1222,60 @@ export default function HomeScreen() {
     }));
   };
 
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  const fetchSunarpAsync = async (queryValue: string) => {
+    const startRes = await fetch(serviceConfigs.sunarp.endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        placa: queryValue,
+        extraer_propietarios: true,
+        incluir_imagen: true,
+      }),
+    });
+    const startJson = await startRes.json().catch(() => ({}));
+    if (!startRes.ok) {
+      throw new Error(
+        (startJson as any)?.error || `Error ${startRes.status}: inicio de consulta`
+      );
+    }
+    const pollEndpoint =
+      (startJson as any)?.poll_endpoint ||
+      ((startJson as any)?.job_id
+        ? `/consulta-vehicular-async/${(startJson as any)?.job_id}`
+        : null);
+    if (!pollEndpoint) {
+      throw new Error('No se pudo iniciar el job de consulta vehicular.');
+    }
+    const pollUrl = pollEndpoint.startsWith('http')
+      ? pollEndpoint
+      : `${apiBase}${pollEndpoint}`;
+
+    const maxAttempts = 12;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      if (attempt > 0) {
+        await sleep(700 + attempt * 250);
+      }
+      const pollRes = await fetch(pollUrl, { method: 'GET' });
+      const pollJson = await pollRes.json().catch(() => ({}));
+      if (!pollRes.ok) {
+        throw new Error(
+          (pollJson as any)?.error || `Error ${pollRes.status}: consulta vehicular`
+        );
+      }
+      const status = (pollJson as any)?.status;
+      if (status === 'done' || (pollJson as any)?.ok === true) {
+        return { pollJson, pollUrl };
+      }
+      if (status === 'error' || (pollJson as any)?.error) {
+        throw new Error((pollJson as any)?.error || 'Error en la consulta vehicular.');
+      }
+    }
+
+    throw new Error('Tiempo de espera agotado. Intenta nuevamente.');
+  };
+
   const fetchService = async (key: string, value?: string, opts?: { force?: boolean }) => {
     const config = serviceConfigs[key];
     if (!config) return;
@@ -1243,25 +1312,35 @@ export default function HomeScreen() {
     let success = false;
     let errorMessage: string | null = null;
     let requestPayload: Record<string, any> = { [config.field]: queryValue };
+    let rawPath = config.endpoint;
+    let rawResult: any = null;
 
     setService(key, { loading: true, error: null, query: queryValue });
     Haptics.selectionAsync();
     try {
       requestPayload = {
         [config.field]: queryValue,
-        ...(key === 'sunarp' ? { extraer_propietarios: true } : {}),
+        ...(key === 'sunarp' ? { extraer_propietarios: true, incluir_imagen: true } : {}),
       };
-      const res = await fetch(config.endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestPayload),
-      });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`Error ${res.status}: ${text || 'sin detalle'}`);
+      if (key === 'sunarp') {
+        const { pollJson, pollUrl } = await fetchSunarpAsync(queryValue);
+        rawPath = pollUrl;
+        data = (pollJson as any)?.data ?? pollJson;
+        rawResult = (data as any)?.resultado_crudo ?? (pollJson as any)?.resultado_crudo ?? '';
+      } else {
+        const res = await fetch(config.endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestPayload),
+        });
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(`Error ${res.status}: ${text || 'sin detalle'}`);
+        }
+        data = await res.json();
+        rawResult = (data as any)?.resultado_crudo ?? '';
       }
-      data = await res.json();
-      parsed = config.parser ? config.parser(data?.resultado_crudo ?? '', data) : null;
+      parsed = config.parser ? config.parser(rawResult ?? '', data) : null;
       if (key === 'sunarp') {
         parsed = await enrichSunarpWithDni(parsed);
       }
@@ -1300,7 +1379,7 @@ export default function HomeScreen() {
           success,
           errorCode: success ? null : errorMessage,
           durationMs: Date.now() - startedAt,
-          rawPath: config.endpoint,
+          rawPath,
         });
         await refreshUsage();
       }
