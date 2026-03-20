@@ -2,11 +2,12 @@ import 'react-native-url-polyfill/auto';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { Platform } from 'react-native';
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
-const isServer = typeof window === 'undefined';
-const isWeb = typeof window !== 'undefined';
+const isWeb = Platform.OS === 'web';
+const isServer = typeof window === 'undefined' && !isWeb;
 
 export const supabase: SupabaseClient | null =
   !isServer && supabaseUrl && supabaseAnonKey

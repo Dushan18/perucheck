@@ -1,0 +1,26 @@
+{
+  "build": {
+    "apk": {
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://ooosgtfzlrzdnmjehabp.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9vb3NndGZ6bHJ6ZG5tamVoYWJwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU3MTk4NjcsImV4cCI6MjA4MTI5NTg2N30.NPh70DIAJUjddDv4UVcKvEAL7BY73k3RT10RHkm5UL4",
+        "EXPO_PUBLIC_API_BASE_URL": "https://rubie-hornblendic-calculatingly.ngrok-free.dev",
+        "EXPO_PUBLIC_PAYMENT_RETURN_URL": "https://eyaqsystems.com"
+      }
+    },
+    "production": {
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://ooosgtfzlrzdnmjehabp.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9vb3NndGZ6bHJ6ZG5tamVoYWJwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU3MTk4NjcsImV4cCI6MjA4MTI5NTg2N30.NPh70DIAJUjddDv4UVcKvEAL7BY73k3RT10RHkm5UL4",
+        "EXPO_PUBLIC_API_BASE_URL": "https://rubie-hornblendic-calculatingly.ngrok-free.dev",
+        "EXPO_PUBLIC_PAYMENT_RETURN_URL": "https://eyaqsystems.com"
+      }
+    }
+  }
+}

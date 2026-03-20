@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator,
   Platform,
@@ -69,6 +70,28 @@ export default function PlansScreen() {
     fetchData();
   }, [session?.user?.id]);
 
+  const refreshSnapshot = async () => {
+    if (!session?.user?.id) return;
+    const snapshot = await getUsageSnapshot(session.user.id);
+    setUsage(snapshot);
+  };
+
+  useFocusEffect(
+    React.useCallback(() => {
+      refreshSnapshot();
+    }, [session?.user?.id])
+  );
+
+  const waitForCredits = async (planId: string) => {
+    if (!session?.user?.id) return;
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      const snapshot = await getUsageSnapshot(session.user.id);
+      setUsage(snapshot);
+      if (snapshot?.plan?.id === planId) return;
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+  };
+
   const mappedPlans = useMemo(() => {
     const currentPlanId = usage?.plan?.id;
     const mapped = plans.map((p) => {
@@ -105,15 +128,18 @@ export default function PlansScreen() {
         return;
       }
 
-      const returnUrl = Linking.createURL('/(tabs)/plans');
+      const paymentReturnUrl = process.env.EXPO_PUBLIC_PAYMENT_RETURN_URL;
+      const returnUrl =
+        paymentReturnUrl && paymentReturnUrl.startsWith('http')
+          ? paymentReturnUrl
+          : Linking.createURL('/(tabs)/plans');
       const pref = await createPaymentPreference(plan.id, returnUrl);
       if (Platform.OS === 'web') {
         await Linking.openURL(pref.initPoint);
       } else {
         await openAuthSessionAsync(pref.initPoint, returnUrl);
       }
-      const snapshot = await getUsageSnapshot(session.user.id);
-      setUsage(snapshot);
+      await waitForCredits(plan.id);
     } catch (err: any) {
       setError(err?.message ?? 'No se pudo iniciar el pago.');
     } finally {
@@ -275,8 +301,16 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   planAction: {
-    color: palette.accent,
-    fontWeight: '700',
+    alignSelf: 'center',
+    textAlign: 'center',
+    color: '#FFFFFF',
+    fontWeight: '800',
+    paddingVertical: 8,
+    paddingHorizontal: 80,
+    borderRadius: 999,
+    borderWidth: 2,
+    borderColor: palette.accent,
+    backgroundColor: palette.accent,
   },
   errorText: {
     color: palette.danger,

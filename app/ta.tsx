@@ -39,7 +39,13 @@ const getRedirectTo = () => {
   if (Constants.appOwnership === 'expo') {
     return `https://auth.expo.io/@${owner}/${slug}`;
   }
-  return Linking.createURL('/');
+  return Linking.createURL('auth');
+};
+
+const getReturnUrl = () => {
+  if (Platform.OS === 'web') return Linking.createURL('/');
+  if (Constants.appOwnership === 'expo') return Linking.createURL('/');
+  return Linking.createURL('auth');
 };
 
 const getProxyStartUrl = (authUrl: string, returnUrl: string) => {
@@ -157,7 +163,7 @@ export default function LoginScreen() {
         setError('No se pudo iniciar sesi??n con Google.');
         return;
       }
-      const returnUrl = Linking.createURL('/');
+      const returnUrl = getReturnUrl();
       const authUrl = getProxyStartUrl(data.url, returnUrl);
       const result = await openAuthSessionAsync(authUrl, returnUrl);
       if (result.type !== 'success' || !result.url) {

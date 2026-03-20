@@ -1,5 +1,6 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import { Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import * as Linking from 'expo-linking';
 import { openAuthSessionAsync } from 'expo-web-browser';
@@ -56,6 +57,38 @@ export default function ModalScreen() {
     fetchData();
   }, [session?.user?.id]);
 
+  const mapUsage = (snapshot: Awaited<ReturnType<typeof getUsageSnapshot>>) => {
+    setUsage({
+      planName: snapshot.plan?.name ?? 'Free',
+      remaining:
+        snapshot.creditsRemaining != null
+          ? `${snapshot.creditsRemaining} restantes${
+              snapshot.validUntil ? ` · vence ${formatExpiry(snapshot.validUntil)}` : ''
+            }`
+          : 'Uso ilimitado',
+    });
+  };
+
+  const refreshSnapshot = async () => {
+    const snapshot = await getUsageSnapshot(session?.user?.id);
+    mapUsage(snapshot);
+  };
+
+  useFocusEffect(
+    React.useCallback(() => {
+      refreshSnapshot();
+    }, [session?.user?.id])
+  );
+
+  const waitForCredits = async (planId: string) => {
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      const snapshot = await getUsageSnapshot(session?.user?.id);
+      mapUsage(snapshot);
+      if (snapshot?.plan?.id === planId) return;
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+  };
+
   const mappedPlans = useMemo(() => {
     return plans.map((p) => {
       return {
@@ -79,7 +112,11 @@ export default function ModalScreen() {
       if (!price || price <= 0) {
         await changePlan(session.user.id, plan.id);
       } else {
-        const returnUrl = Linking.createURL('/modal');
+        const paymentReturnUrl = process.env.EXPO_PUBLIC_PAYMENT_RETURN_URL;
+        const returnUrl =
+          paymentReturnUrl && paymentReturnUrl.startsWith('http')
+            ? paymentReturnUrl
+            : Linking.createURL('/modal');
         const pref = await createPaymentPreference(plan.id, returnUrl);
         if (Platform.OS === 'web') {
           await Linking.openURL(pref.initPoint);
@@ -87,16 +124,7 @@ export default function ModalScreen() {
           await openAuthSessionAsync(pref.initPoint, returnUrl);
         }
       }
-      const snapshot = await getUsageSnapshot(session.user.id);
-      setUsage({
-        planName: snapshot.plan?.name ?? 'Free',
-        remaining:
-          snapshot.creditsRemaining != null
-            ? `${snapshot.creditsRemaining} restantes${
-                snapshot.validUntil ? ` · vence ${formatExpiry(snapshot.validUntil)}` : ''
-              }`
-            : 'Uso ilimitado',
-      });
+      await waitForCredits(plan.id);
     } catch (err: any) {
       setError(err?.message ?? 'No se pudo iniciar el pago.');
     } finally {
@@ -245,8 +273,16 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   planAction: {
-    color: '#0CD3A2',
-    fontWeight: '700',
+    alignSelf: 'center',
+    textAlign: 'center',
+    color: '#FFFFFF',
+    fontWeight: '800',
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    borderRadius: 999,
+    borderWidth: 2,
+    borderColor: '#16A34A',
+    backgroundColor: '#16A34A',
   },
   helper: {
     padding: 14,
@@ -272,3 +308,5 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
 });
+
+

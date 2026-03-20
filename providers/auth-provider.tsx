@@ -1,6 +1,6 @@
 import { useRouter, useSegments } from 'expo-router';
 import { PropsWithChildren, createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, StyleSheet } from 'react-native';
+import { ActivityIndicator, Platform, StyleSheet } from 'react-native';
 
 import { Session } from '@supabase/supabase-js';
 
@@ -21,6 +21,18 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const withTimeout = async <T,>(promise: Promise<T>, ms: number) => {
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    const timeout = new Promise<T>((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error('getSession timeout')), ms);
+    });
+    try {
+      return await Promise.race([promise, timeout]);
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
+    }
+  };
+
   useEffect(() => {
     let active = true;
     const init = async () => {
@@ -28,8 +40,12 @@ export function AuthProvider({ children }: PropsWithChildren) {
         setLoading(false);
         return;
       }
-      // Fallback manual para web: si hay tokens en el hash, fijar sesión y limpiar URL.
-      if (typeof window !== 'undefined' && window.location.hash.includes('access_token')) {
+      // Fallback manual solo para web: si hay tokens en el hash, fijar sesión y limpiar URL.
+      if (
+        Platform.OS === 'web' &&
+        typeof window !== 'undefined' &&
+        window.location?.hash?.includes('access_token')
+      ) {
         const params = new URLSearchParams(window.location.hash.replace('#', ''));
         const access_token = params.get('access_token');
         const refresh_token = params.get('refresh_token');
@@ -43,11 +59,18 @@ export function AuthProvider({ children }: PropsWithChildren) {
         }
       }
 
-      const { data, error } = await supabase.auth.getSession();
-      if (!active) return;
-      if (error) console.warn('getSession error', error.message);
-      setSession(data.session ?? null);
-      setLoading(false);
+      try {
+        const { data, error } = await withTimeout(supabase.auth.getSession(), 8000);
+        if (!active) return;
+        if (error) console.warn('getSession error', error.message);
+        setSession(data.session ?? null);
+      } catch (error) {
+        if (!active) return;
+        console.warn('getSession failed', error);
+        setSession(null);
+      } finally {
+        if (active) setLoading(false);
+      }
     };
     init();
 
@@ -86,7 +109,7 @@ export function AuthGate({ children }: PropsWithChildren) {
   const { session, loading } = useAuth();
   const segments = useSegments();
   const router = useRouter();
-  const publicRoutes = new Set(['login', 'ta']);
+  const publicRoutes = new Set(['login', 'ta', 'auth']);
 
   useEffect(() => {
     if (loading) return;

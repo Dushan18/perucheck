@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Alert,
   Keyboard,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -19,7 +20,12 @@ import ParallaxScrollView from '@/components/parallax-scroll-view';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Fonts } from '@/constants/theme';
-import { getUsageSnapshot, registerConsulta, type UsageSnapshot } from '@/lib/billing';
+import {
+  consumeCredit,
+  getUsageSnapshot,
+  registerConsulta,
+  type UsageSnapshot,
+} from '@/lib/billing';
 import { useAuth } from '@/providers/auth-provider';
 
 const palette = {
@@ -112,6 +118,13 @@ type OwnerLookupState = {
   data: any | null;
   error: string | null;
   query: string | null;
+};
+
+type DniNameLookupRow = {
+  dni?: string;
+  nombres?: string;
+  ap_paterno?: string;
+  ap_materno?: string;
 };
 
 const parseDate = (input?: string | null) => {
@@ -484,11 +497,10 @@ const personChecks: {
     { key: 'licencia', title: 'Licencia MTC', status: 'Pendiente', statusColor: palette.primary, detail: 'Clase y vigencia' },
     { key: 'redam', title: 'REDAM', status: 'Pendiente', statusColor: palette.accent, detail: 'Registros vigentes' },
     { key: 'recompensas', title: 'Recompensas', status: 'Pendiente', statusColor: palette.accent, detail: 'Consulta manual' },
-    { key: 'paquetes', title: 'Comprar paquetes', status: 'PeruCheck', statusColor: palette.gold, detail: 'Créditos de consultas' },
   ];
 
 const vehicle = {
-  plate: 'ABC-123',
+  plate: '',
   owner: 'Juan Pérez Rojas',
   vin: '9BWZZZ377VT004251',
   brand: 'Toyota',
@@ -499,7 +511,7 @@ const vehicle = {
 };
 const personSample = {
   name: 'María Fernanda Torres',
-  dni: '12345678',
+  dni: '',
   license: 'AIIb · vence 09/2025',
   redam: 'Sin registros',
 };
@@ -572,7 +584,7 @@ function PlateInputCard({
           value={formattedPlate}
           onChangeText={(text) => onChange(formatPlate(text))}
           autoCapitalize="characters"
-          placeholder="ABC-123"
+          placeholder=""
           placeholderTextColor="#9CA3AF"
           style={styles.inputOverlay}
           maxLength={7}
@@ -628,7 +640,7 @@ function PersonInputCard({
           ref={inputRef}
           value={formatted}
           onChangeText={(text) => onChange(formatDni(text))}
-          placeholder="12345678"
+          placeholder=""
           placeholderTextColor="#9CA3AF"
           style={styles.inputOverlay}
           maxLength={8}
@@ -642,15 +654,6 @@ function PersonInputCard({
         <MaterialIcons name="search" size={22} color="#fff" />
         <ThemedText style={styles.primaryButtonText}>Consultar</ThemedText>
       </Pressable>
-
-      <View style={styles.quickChips}>
-        {['12345678', '87654321', '44556677'].map((doc) => (
-          <Pressable key={doc} style={styles.chip} onPress={() => onSelectDoc(doc)}>
-            <MaterialIcons name="person-search" size={14} color={palette.gold} />
-            <ThemedText style={styles.chipText}>{doc}</ThemedText>
-          </Pressable>
-        ))}
-      </View>
       <ThemedText style={styles.inputHint}>
         Usa DNI o documento; luego puedes abrir REDAM, licencia o recompensas.
       </ThemedText>
@@ -725,12 +728,27 @@ function renderSoatState(state?: ServiceState, onRefresh?: () => void) {
   );
 }
 
-function renderSunarpState(state?: ServiceState, onRefresh?: () => void) {
+function renderSunarpState(
+  state?: ServiceState,
+  onRefresh?: () => void,
+  onOpenImage?: (url: string) => void
+) {
   if (!state || (!state.data && !state.loading && !state.error)) {
     return <ThemedText style={styles.serviceDetail}>Pulsa para consultar</ThemedText>;
   }
   if (state.loading) return <ActivityIndicator color={palette.primary} />;
-  if (state.error) return <ThemedText style={styles.errorText}>{state.error}</ThemedText>;
+  if (state.error) {
+    return (
+      <View style={styles.soatContent}>
+        <ThemedText style={styles.errorText}>{state.error}</ThemedText>
+        {onRefresh ? (
+          <Pressable style={styles.secondaryButton} onPress={onRefresh}>
+            <ThemedText style={styles.secondaryText}>Actualizar SUNARP</ThemedText>
+          </Pressable>
+        ) : null}
+      </View>
+    );
+  }
   const parsed: SunarpData | null | undefined = state.parsed;
   if (!parsed) return renderGenericServiceState(state, onRefresh);
   const hasImage = Boolean(parsed.imagenResultado);
@@ -738,12 +756,20 @@ function renderSunarpState(state?: ServiceState, onRefresh?: () => void) {
   return (
     <View style={styles.soatContent}>
       {hasImage ? (
-        <Image source={{ uri: parsed.imagenResultado }} style={styles.sunarpImage} contentFit="contain" />
+        <Pressable onPress={() => onOpenImage?.(parsed.imagenResultado ?? '')}>
+          <Image
+            source={{ uri: parsed.imagenResultado }}
+            style={styles.sunarpImage}
+            contentFit="contain"
+          />
+        </Pressable>
       ) : (
         <ThemedText style={styles.serviceDetail}>Sin imagen de SUNARP en la respuesta</ThemedText>
       )}
       {hasImage ? (
-        <ThemedText style={styles.personDetail}>Imagen del resultado SUNARP generada en la consulta.</ThemedText>
+        <ThemedText style={styles.personDetail}>
+          Imagen del resultado SUNARP generada en la consulta. Toca para ampliar.
+        </ThemedText>
       ) : null}
       {onRefresh ? (
         <Pressable style={styles.secondaryButton} onPress={onRefresh}>
@@ -925,6 +951,8 @@ export default function HomeScreen() {
   //responsive
   const { width } = useWindowDimensions();
   const contentMax = Math.min(280, width - 64);
+  const isSmall = width < 360;
+  const isLarge = width >= 430;
 
 
   const router = useRouter();
@@ -940,6 +968,7 @@ export default function HomeScreen() {
     );
   });
   const [showOwnerDetails, setShowOwnerDetails] = useState(false);
+  const [sunarpPreviewUrl, setSunarpPreviewUrl] = useState<string | null>(null);
   const sunarpData = serviceState['sunarp']?.parsed as SunarpData | null | undefined;
   const sunarpOwnersBase =
     (sunarpData?.coincidencias && sunarpData.coincidencias.length > 0
@@ -1001,7 +1030,7 @@ export default function HomeScreen() {
       ? 'RUC'
       : ownerDisplayType === 'persona'
         ? 'DNI'
-        : 'Propietario';
+        : 'DNI o RUC';
   const ownerLookupPrimary = ownerLookup.loading
     ? 'Consultando...'
     : ownerLookup.error
@@ -1011,6 +1040,19 @@ export default function HomeScreen() {
         : ownerDisplayType === 'persona'
           ? ownerLookup.data?.dni || 'Sin resultados'
           : 'Consulta pendiente';
+  const ownerLookupHasResolvedValue =
+    ownerDisplayType === 'empresa'
+      ? Boolean(ownerLookup.data?.ruc)
+      : ownerDisplayType === 'persona'
+        ? Boolean(ownerLookup.data?.dni)
+        : false;
+  const ownerLookupDniRows = useMemo(() => {
+    if (ownerDisplayType !== 'persona') return [];
+    if (!Array.isArray(ownerLookup.data?.resultados)) return [];
+    return ownerLookup.data.resultados.filter((row: DniNameLookupRow | null | undefined) => {
+      return Boolean(row?.dni || row?.nombres || row?.ap_paterno || row?.ap_materno);
+    });
+  }, [ownerDisplayType, ownerLookup.data]);
   const [usage, setUsage] = useState<UsageSnapshot | null>(null);
   const [usageLoading, setUsageLoading] = useState(false);
 
@@ -1104,13 +1146,15 @@ export default function HomeScreen() {
             return { result: null, error: `Error ${res.status}` };
           }
           const json = await res.json();
-          const result = Array.isArray(json?.resultados) ? json.resultados[0] : null;
-          return { result, error: null };
+          const resultados = Array.isArray(json?.resultados) ? json.resultados : [];
+          const result = resultados[0] ?? null;
+          return { result, resultados, error: null };
         })();
 
         const [sunatResponse, dniResponse] = await Promise.all([sunatPromise, dniPromise]);
         const sunatResult = sunatResponse?.result ?? null;
         const dniResult = dniResponse?.result ?? null;
+        const dniResultados = Array.isArray(dniResponse?.resultados) ? dniResponse.resultados : [];
         const lookupError = sunatResponse?.error || dniResponse?.error;
 
         if (sunatResult) {
@@ -1141,6 +1185,7 @@ export default function HomeScreen() {
               fecha_nacimiento: dniResult?.fecha_nacimiento,
               ubigeo_domicilio: dniResult?.ubigeo_domicilio,
               direccion: dniResult?.direccion,
+              resultados: dniResultados,
             },
             error: null,
             query: queryKey,
@@ -1276,7 +1321,11 @@ export default function HomeScreen() {
     throw new Error('Tiempo de espera agotado. Intenta nuevamente.');
   };
 
-  const fetchService = async (key: string, value?: string, opts?: { force?: boolean }) => {
+  const fetchService = async (
+    key: string,
+    value?: string,
+    opts?: { force?: boolean; consumeCredit?: boolean }
+  ) => {
     const config = serviceConfigs[key];
     if (!config) return;
     if (!guardCredits()) return;
@@ -1380,28 +1429,65 @@ export default function HomeScreen() {
           errorCode: success ? null : errorMessage,
           durationMs: Date.now() - startedAt,
           rawPath,
+          consumeCredit: opts?.consumeCredit,
         });
-        await refreshUsage();
+        if (opts?.consumeCredit !== false) {
+          await refreshUsage();
+        }
       }
     }
+
+    return success;
   };
 
   const fetchAllVehicleServices = async () => {
+    const charged = await consumeCredit();
+    if (!charged) {
+      Alert.alert(
+        'Sin créditos',
+        'Se agotaron las consultas de tu plan. Compra un paquete para seguir consultando.'
+      );
+      await refreshUsage();
+      return;
+    }
+
     const keys = Object.keys(serviceConfigs);
     await Promise.all(
       keys
         .filter((k) => serviceConfigs[k].scope === 'vehiculo')
-        .map((k) => fetchService(k, formattedPlate.replace('-', ''), { force: true }))
+        .map((k) =>
+          fetchService(k, formattedPlate.replace('-', ''), {
+            force: true,
+            consumeCredit: false,
+          })
+        )
     );
+    await refreshUsage();
   };
 
   const fetchAllPersonServices = async () => {
     const dni = formatDni(personaDoc);
+    const charged = await consumeCredit();
+    if (!charged) {
+      Alert.alert(
+        'Sin créditos',
+        'Se agotaron las consultas de tu plan. Compra un paquete para seguir consultando.'
+      );
+      await refreshUsage();
+      return;
+    }
+
     await Promise.all(
       Object.keys(serviceConfigs)
         .filter((k) => serviceConfigs[k].scope === 'persona')
-        .map((k) => fetchService(k, dni, { force: true }))
+        .map((k) =>
+          fetchService(k, dni, {
+            force: true,
+            consumeCredit: false,
+          })
+        )
     );
+    await refreshUsage();
   };
 
   const handlePersonConsult = () => {
@@ -1421,20 +1507,37 @@ export default function HomeScreen() {
 
     <ParallaxScrollView
       headerBackgroundColor={{ light: palette.surface, dark: palette.surface }}
+      headerHeight={isSmall ? 170 : isLarge ? 240 : 200}
       headerImage={
-        <View style={styles.headerHero}>
-          <Image
-            style={styles.heroLogo}
-            contentFit="contain"
-          />
-          <View style={styles.headerCopy}>
-            <ThemedText style={styles.heroOverline}>CIVICAR · Reportes</ThemedText>
-            <ThemedText type="title" style={[styles.heroTitle, { maxWidth: contentMax }]}>
-              Reportes móviles de vehículos y personas
-            </ThemedText>
-            <ThemedText style={[styles.heroSubtitle, { maxWidth: contentMax }]}>
-              Consulta vehículos y personas con datos oficiales (SUNARP, SAT, SOAT, MTC, REDAM y más) en tu app PeruCheck.
-            </ThemedText>
+        <View
+          style={[
+            styles.headerHero,
+            isSmall && styles.headerHeroSmall,
+            isLarge && styles.headerHeroLarge,
+          ]}>
+          <ThemedText
+            style={[
+              styles.heroBrand,
+              isSmall && { fontSize: 28, letterSpacing: 2 },
+              isLarge && { fontSize: 40, letterSpacing: 3 },
+            ]}>
+            CIVICAR
+          </ThemedText>
+          <View
+            style={[
+              styles.heroLogoCard,
+              isSmall && { width: 70, height: 70, borderRadius: 18 },
+              isLarge && { width: 110, height: 110, borderRadius: 28 },
+            ]}>
+            <Image
+              source={require('../../assets/images/logo_PeruCheck.png')}
+              style={[
+                styles.heroLogoImg,
+                isSmall && { width: 42, height: 42 },
+                isLarge && { width: 70, height: 70 },
+              ]}
+              contentFit="contain"
+            />
           </View>
         </View>
       }>
@@ -1551,24 +1654,30 @@ export default function HomeScreen() {
                   <ThemedText
                     style={[
                       styles.summaryValue,
-                      { color: ownerLookupPrimary ? '#070707' : palette.muted },
+                      { color: ownerLookupHasResolvedValue ? '#070707' : palette.muted },
                     ]}>
-                  {ownerLookupPrimary}
-                </ThemedText>
-                {ownerLookup.loading ? (
-                  <ActivityIndicator color={palette.primary} style={{ marginTop: 4 }} />
-                ) : null}
+                    {ownerLookupPrimary}
+                  </ThemedText>
+                  {ownerLookup.loading ? (
+                    <ActivityIndicator color={palette.primary} style={{ marginTop: 4 }} />
+                  ) : null}
+                  {ownerLookupDniRows.length ? (
+                    <View style={styles.ownerList}>
+                      {ownerLookupDniRows.map((row: DniNameLookupRow, idx: number) => (
+                        <ThemedText key={`${row?.dni ?? 'sin-dni'}-${idx}`} style={styles.ownerLine}>
+                          {`\u2022 ${(row?.nombres || '').trim()} ${(row?.ap_paterno || '').trim()} ${(row?.ap_materno || '').trim()} (${row?.dni || 'sin DNI'})`}
+                        </ThemedText>
+                      ))}
+                    </View>
+                  ) : null}
+                </View>
               </View>
-            </View>
             </View>
           </ThemedView>
 
           <ThemedView style={styles.card}>
             <View style={styles.sectionHeader}>
-              <ThemedText style={styles.sectionTitle}>Entidades control</ThemedText>
-              <ThemedText style={styles.sectionHint}>
-                SUTRAN, SUNARP, SAT Lima/Callao, SOAT, RT
-              </ThemedText>
+              <ThemedText style={styles.sectionTitle}>Entidades de Control</ThemedText>
             </View>
             <View style={{ marginTop: 12 }}>
               {vehicleServices.map((service) => (
@@ -1601,7 +1710,7 @@ export default function HomeScreen() {
                       : service.key === 'sunarp'
                         ? renderSunarpState(serviceState['sunarp'], () =>
                           fetchService('sunarp', undefined, { force: true })
-                        )
+                        , setSunarpPreviewUrl)
                         : renderGenericServiceState(serviceState[service.key], () =>
                           fetchService(service.key, undefined, { force: true })
                         )}
@@ -1652,6 +1761,30 @@ export default function HomeScreen() {
           </ThemedView>
         </>
       )}
+
+      <Modal
+        visible={Boolean(sunarpPreviewUrl)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSunarpPreviewUrl(null)}>
+        <View style={styles.previewOverlay}>
+          <Pressable style={styles.previewBackdrop} onPress={() => setSunarpPreviewUrl(null)} />
+          <View style={styles.previewCard}>
+            {sunarpPreviewUrl ? (
+              <Image
+                source={{ uri: sunarpPreviewUrl }}
+                style={styles.previewImage}
+                contentFit="contain"
+              />
+            ) : null}
+            <Pressable
+              style={styles.previewCloseButton}
+              onPress={() => setSunarpPreviewUrl(null)}>
+              <ThemedText style={styles.previewCloseText}>Cerrar</ThemedText>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </ParallaxScrollView>
 
   );
@@ -1697,28 +1830,46 @@ const styles = StyleSheet.create({
 
   headerHero: {
     flex: 1,
-    padding: 32,
-    position: 'relative',
-    overflow: 'hidden',
-    backgroundColor: '#ffffff'
+    paddingVertical: 32,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 14,
+    backgroundColor: '#ffffff',
+  },
+  headerHeroSmall: {
+    paddingVertical: 20,
+    gap: 10,
+  },
+  headerHeroLarge: {
+    paddingVertical: 40,
+    gap: 16,
   },
 
-  heroLogo: {
-    width: 96,
-    height: 96,
-    position: 'absolute',
-    bottom: 16,
-    right: 18,
-    opacity: 0.08,
+  heroBrand: {
+    fontSize: 34,
+    fontWeight: '900',
+    letterSpacing: 2.4,
+    color: palette.primary,
   },
-  headerCopy: {
-    flex: 1,
-    gap: 8,
+  heroLogoCard: {
+    width: 86,
+    height: 86,
+    borderRadius: 22,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: palette.border,
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 3,
   },
-  heroBadges: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 8,
+  heroLogoImg: {
+    width: 54,
+    height: 54,
   },
   modeToggle: {
     flexDirection: 'row',
@@ -2108,9 +2259,46 @@ const styles = StyleSheet.create({
   },
   sunarpImage: {
     width: '100%',
-    height: 160,
+    height: 220,
     borderRadius: 12,
     marginTop: 8,
+  },
+  previewOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(5, 9, 21, 0.92)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  previewBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  previewCard: {
+    width: '100%',
+    maxWidth: 820,
+    maxHeight: '88%',
+    borderRadius: 18,
+    backgroundColor: '#0B1220',
+    borderWidth: 1,
+    borderColor: '#1F2937',
+    padding: 14,
+    gap: 12,
+  },
+  previewImage: {
+    width: '100%',
+    height: 520,
+    borderRadius: 12,
+  },
+  previewCloseButton: {
+    alignSelf: 'center',
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 999,
+    backgroundColor: '#FFFFFF',
+  },
+  previewCloseText: {
+    color: '#0B1220',
+    fontWeight: '800',
   },
   actionsGrid: {
     flexDirection: 'row',

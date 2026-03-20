@@ -41,7 +41,13 @@ const getRedirectTo = () => {
   const owner =
     Constants.expoConfig?.owner ?? Constants.easConfig?.projectOwner ?? 'anonymous';
   if (Constants.appOwnership === 'expo') return `https://auth.expo.io/@${owner}/${slug}`;
-  return Linking.createURL('/');
+  return Linking.createURL('auth');
+};
+
+const getReturnUrl = () => {
+  if (Platform.OS === 'web') return Linking.createURL('/');
+  if (Constants.appOwnership === 'expo') return Linking.createURL('/');
+  return Linking.createURL('auth');
 };
 
 const getProxyStartUrl = (authUrl: string, returnUrl: string) => {
@@ -86,7 +92,7 @@ export default function LoginScreen() {
         return;
       }
 
-      const returnUrl = Linking.createURL('/');
+      const returnUrl = getReturnUrl();
       const authUrl = getProxyStartUrl(data.url, returnUrl);
       const result = await openAuthSessionAsync(authUrl, returnUrl);
 

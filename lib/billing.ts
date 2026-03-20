@@ -206,6 +206,22 @@ export async function getUsageSnapshot(userId?: string): Promise<UsageSnapshot> 
   };
 }
 
+export async function consumeCredit(): Promise<boolean> {
+  if (!supabase) return false;
+
+  try {
+    const { data: consumeOk, error: consumeError } = await supabase.rpc('consume_credit');
+    if (consumeError) {
+      console.warn('consume_credit error', consumeError);
+      return false;
+    }
+    return consumeOk !== false;
+  } catch (error) {
+    console.warn('consume_credit failed', error);
+    return false;
+  }
+}
+
 type RegisterConsultaInput = {
   userId: string;
   serviceKey: string;
@@ -218,6 +234,7 @@ type RegisterConsultaInput = {
   errorCode?: string | null;
   durationMs?: number | null;
   rawPath?: string | null;
+  consumeCredit?: boolean;
 };
 
 export async function registerConsulta(input: RegisterConsultaInput) {
@@ -238,12 +255,12 @@ export async function registerConsulta(input: RegisterConsultaInput) {
   };
 
   try {
-    const { data: consumeOk, error: consumeError } = await supabase.rpc('consume_credit');
-    if (consumeError) {
-      console.warn('consume_credit error', consumeError);
-    } else if (consumeOk === false) {
-      console.warn('consume_credit denied; skipping consulta insert');
-      return;
+    if (input.consumeCredit !== false) {
+      const charged = await consumeCredit();
+      if (!charged) {
+        console.warn('consume_credit denied; skipping consulta insert');
+        return;
+      }
     }
 
     await supabase.from('consultas').insert(row);

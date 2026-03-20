@@ -1,11 +1,12 @@
 {
+  "$schema": "https://expo.dev/schemas/expo-config.json",
   "expo": {
-    "name": "phunter",
+    "name": "CiviCar",
     "slug": "phunter",
     "owner": "dushan18",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/Logo_apk.png",
     "scheme": "phunter",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -14,13 +15,12 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        "backgroundColor": "#FFFFFF",
+        "foregroundImage": "./assets/images/Logo_apk.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.perucheck.app"
     },
     "web": {
       "output": "static",
@@ -45,6 +45,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "82b18ae0-2262-4c95-b397-208b69a046d1"
+      }
     }
   }
 }
